@@ -47,6 +47,21 @@ Claude reads `SKILL.md`, runs `bash scripts/run-audit.sh`, parses the four outpu
 jq -r '"\(.score)/100 [\(.grade) — \(.grade_label)]   crit:\(.summary.critical) high:\(.summary.high) secrets:\(.summary.secrets_distinct)"' ~/.ai-agent-audit/audit-report.json
 ```
 
+**Purge detected secrets from history / sessions** (separate utility, dry-run by default):
+
+```bash
+# Dry-run — shows what would be removed, makes no changes
+bash scripts/purge-secrets.sh
+
+# Actually delete (creates .bak.<TIMESTAMP> backups before each modification)
+bash scripts/purge-secrets.sh --purge
+
+# Also wipe Cursor SQLite chat storage (opt-in)
+bash scripts/purge-secrets.sh --purge --include-cursor
+```
+
+The purge script removes lines containing real credentials from `~/.bash_history`, `~/.claude/history.jsonl`, every `~/.claude/projects/*/sessions/*.jsonl`, and Cline state files (`~/.config/Code/User/globalStorage/*cline*/tasks/*/`). It uses the same pattern set as the audit and excludes local docker / loopback database URLs from purge by default (since `postgres://user:pass@localhost/...` is not a real leak). Run rotation in your provider UIs **before** purge — deletion of a leaked-key entry doesn't un-leak the key, only removes the trail.
+
 ## Why this exists
 
 AI coding agents have broad access to `$HOME` by design — that is what makes them useful. The same access turns the developer machine's credential surface into the agent's attack surface. Documented incidents share one root cause: nobody had audited what was actually reachable from the agent's working directory.
@@ -236,6 +251,7 @@ ai-agent-audit/
 ├── scripts/
 │   ├── run-audit.sh                   # main orchestrator
 │   ├── aggregate.sh                   # JSONL → JSON + Markdown
+│   ├── purge-secrets.sh               # remove detected credential lines (dry-run by default)
 │   ├── lib/
 │   │   ├── common.sh                  # shared helpers, OS detection, json_decode_field
 │   │   ├── secrets.sh                 # secret classification database, redact_fingerprint
