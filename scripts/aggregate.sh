@@ -6,10 +6,12 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/action_plan.sh"
 
 OUT_JSON="$AUDIT_DIR/audit-report.json"
 OUT_MD="$AUDIT_DIR/audit-report.md"
 SECRETS_INVENTORY="$AUDIT_DIR/secrets-inventory.md"
+ACTION_PLAN="$AUDIT_DIR/action-plan.md"
 
 # All modules ever produced (alphabetical letters used as IDs).
 ALL_MODULES="A B C D E F G H I J K L M N P"
@@ -160,7 +162,11 @@ TOTAL=$((CRIT + HIGH + MED + LOW + INFO))
   echo '```'
 } > "$OUT_MD"
 
+# ---------- Action plan (prioritised checklist) ----------
+generate_action_plan
+
 log "AGG" "Report written: $OUT_MD"
 log "AGG" "JSON written:   $OUT_JSON"
 [[ -f "$SECRETS_INVENTORY" ]] && log "AGG" "Secrets inventory: $SECRETS_INVENTORY"
+[[ -f "$ACTION_PLAN" ]] && log "AGG" "Action plan: $ACTION_PLAN"
 log "AGG" "Findings: CRITICAL=$CRIT HIGH=$HIGH MEDIUM=$MED LOW=$LOW INFO=$INFO"

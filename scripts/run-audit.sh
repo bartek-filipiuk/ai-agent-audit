@@ -40,6 +40,7 @@ Output:
   \$AUDIT_DIR/audit-report.json          — aggregated machine-readable
   \$AUDIT_DIR/audit-report.md            — human-readable report
   \$AUDIT_DIR/secrets-inventory.md       — classified secrets (per source, redacted fingerprints)
+  \$AUDIT_DIR/action-plan.md             — prioritised checklist (start here)
 EOF
       exit 0 ;;
     *) err "Unknown arg: $1"; exit 1 ;;
@@ -104,4 +105,6 @@ echo "    $AUDIT_DIR/audit-report.md"
 echo "    $AUDIT_DIR/audit-report.json"
 [[ -f "$AUDIT_DIR/secrets-inventory.md" ]] && \
 echo "    $AUDIT_DIR/secrets-inventory.md  (classified secrets, redacted fingerprints)"
+[[ -f "$AUDIT_DIR/action-plan.md" ]] && \
+echo "    $AUDIT_DIR/action-plan.md        (prioritised checklist — start here)"
 echo "═══════════════════════════════════════════════════════════"
