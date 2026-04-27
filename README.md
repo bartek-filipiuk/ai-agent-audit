@@ -6,6 +6,47 @@ This tool answers a single question: **"What can an AI coding agent see and do o
 
 It scans for credentials, tool configuration, hooks, MCP servers, agent skills, IDE extensions, session artifacts, and supply-chain compromise indicators that AI agents (Cursor, Claude Code, Gemini CLI, Cline, Aider, Codex, Windsurf, Amazon Q, and others) routinely have access to. Every finding maps to a documented incident class.
 
+## TL;DR
+
+Read-only scan of `$HOME` for everything an AI coding agent can reach: SSH keys, cloud creds, npm/pip tokens, MCP server configs, AI hooks, repo-level `.claude/.cursor/` configs, agent skills, IDE extensions, plus credential leakage in shell history and session JSONL/SQLite. Outputs a security score (0–100) and five reports — Markdown, JSON, classified secrets inventory with redacted fingerprints, prioritised action plan, and a cyberpunk-themed HTML report that auto-opens in your browser. No network, no auto-remediation, no raw secret values written anywhere.
+
+## Quick start
+
+**Install the skill globally** (works from any project, every Claude Code session):
+
+```bash
+git clone https://github.com/bartek-filipiuk/ai-agent-audit.git ~/.claude/skills/ai-agent-audit
+chmod +x ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh \
+         ~/.claude/skills/ai-agent-audit/scripts/aggregate.sh \
+         ~/.claude/skills/ai-agent-audit/scripts/lib/*.sh \
+         ~/.claude/skills/ai-agent-audit/scripts/modules/*.sh
+```
+
+The `SKILL.md` at the repo root is what Claude Code auto-discovers.
+
+**Run directly without an agent:**
+
+```bash
+bash ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh
+# HTML report auto-opens in your browser at the end.
+```
+
+**Or — let Claude Code handle it.** Drop one of these prompts into any session:
+
+> Run the ai-agent-audit skill — full scan, then open the HTML report and summarise the top 3 critical findings plus what to rotate first.
+
+> Audit my dev machine for AI agent risks. Use the ai-agent-audit skill, run all modules, then walk me through the action plan from highest priority down.
+
+> Use the ai-agent-audit skill to scan this machine, focusing on Nx-style supply-chain indicators (module G) and the secrets inventory. Tell me which keys to rotate today.
+
+Claude reads `SKILL.md`, runs `bash scripts/run-audit.sh`, parses the four output files (`audit-report.md`, `audit-report.json`, `secrets-inventory.md`, `action-plan.md`), and summarises with severity-ordered recommendations. The HTML report opens automatically in your default browser unless you pass `--no-open`.
+
+**One-line score check** (after a run):
+
+```bash
+jq -r '"\(.score)/100 [\(.grade) — \(.grade_label)]   crit:\(.summary.critical) high:\(.summary.high) secrets:\(.summary.secrets_distinct)"' ~/.ai-agent-audit/audit-report.json
+```
+
 ## Why this exists
 
 AI coding agents have broad access to `$HOME` by design — that is what makes them useful. The same access turns the developer machine's credential surface into the agent's attack surface. Documented incidents share one root cause: nobody had audited what was actually reachable from the agent's working directory.

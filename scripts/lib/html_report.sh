@@ -300,17 +300,65 @@ body::after {
   position: relative;
   z-index: 1;
 }
-.banner {
+.banner-wrap {
   text-align: center;
+  margin: 32px 0 24px;
+  padding: 0 16px;
+}
+.banner {
+  display: inline-block;
+  text-align: left;
   color: var(--neon);
   font-size: 11px;
-  line-height: 1.1;
-  margin-bottom: 8px;
-  text-shadow: 0 0 8px var(--neon-soft);
+  line-height: 1.15;
+  padding: 18px 28px;
+  margin: 0;
+  text-shadow: 0 0 10px var(--neon-soft);
   white-space: pre;
-  overflow-x: auto;
+  background: rgba(0, 255, 65, 0.025);
+  border: 1px solid rgba(0, 255, 65, 0.2);
+  border-radius: 2px;
+  box-shadow: inset 0 0 30px rgba(0, 255, 65, 0.04), 0 0 18px rgba(0, 255, 65, 0.05);
 }
 .banner.skull { color: var(--red); text-shadow: 0 0 8px rgba(255, 33, 71, 0.6); margin: 16px auto; }
+
+/* Status badge (replaces ASCII skull/shield) — predictable cross-browser rendering */
+.status-badge {
+  text-align: center;
+  margin: 32px auto;
+  padding: 20px 16px;
+  max-width: 560px;
+  border: 1px solid;
+  background: var(--bg-2);
+  position: relative;
+}
+.status-emoji {
+  font-size: 5.5em;
+  line-height: 1;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 0 18px currentColor);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.status-frame { font-size: 12px; line-height: 1.6; letter-spacing: 0.06em; }
+.status-line { color: currentColor; opacity: 0.5; white-space: nowrap; overflow: hidden; }
+.status-caption { font-size: 1.5em; font-weight: 900; letter-spacing: 0.18em; margin: 4px 0; }
+.status-sub { font-size: 0.95em; opacity: 0.75; letter-spacing: 0.1em; margin: 4px 0; }
+
+.status-badge.badge-critical {
+  color: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 24px rgba(255, 33, 71, 0.18), inset 0 0 24px rgba(255, 33, 71, 0.08);
+  background: linear-gradient(180deg, rgba(255, 33, 71, 0.04), transparent);
+}
+.status-badge.badge-critical .status-caption { animation: glitch 1.6s infinite; }
+.status-badge.badge-danger   { color: var(--orange); border-color: var(--orange); box-shadow: 0 0 20px rgba(255, 140, 0, 0.18), inset 0 0 20px rgba(255, 140, 0, 0.06); }
+.status-badge.badge-warning  { color: var(--amber);  border-color: var(--amber);  box-shadow: 0 0 20px rgba(255, 183, 0, 0.18), inset 0 0 20px rgba(255, 183, 0, 0.06); }
+.status-badge.badge-ok       { color: var(--neon);   border-color: var(--neon);   box-shadow: 0 0 24px rgba(0, 255, 65, 0.22), inset 0 0 24px rgba(0, 255, 65, 0.08); background: linear-gradient(180deg, rgba(0, 255, 65, 0.04), transparent); }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.05); opacity: 0.92; }
+}
 .title-bar {
   display: flex; justify-content: space-between; align-items: baseline;
   border-top: 1px dashed var(--neon-soft);
@@ -509,14 +557,12 @@ a:hover { color: var(--neon); }
 </head>
 <body>
 <div class="wrapper">
-
-<pre class="banner">
-   ╔═══════════════════════════════════════════════════════════════════╗
-   ║   ▄▀█ █   ▄▀█ █▀▀ █▀▀ █▄ █ ▀█▀     ▄▀█ █ █ █▀▄ █ ▀█▀              ║
-   ║   █▀█ █   █▀█ █▄█ ██▄ █ ▀█  █      █▀█ █▄█ █▄▀ █  █               ║
-   ║                                                                   ║
-   ║   &gt;&gt; LOCAL EXPOSURE SURFACE — v2 — 15 MODULES — READ-ONLY &lt;&lt;      ║
-   ╚═══════════════════════════════════════════════════════════════════╝</pre>
+<div class="banner-wrap"><pre class="banner">╔═══════════════════════════════════════════════════════════════════╗
+║   ▄▀█ █   ▄▀█ █▀▀ █▀▀ █▄ █ ▀█▀     ▄▀█ █ █ █▀▄ █ ▀█▀              ║
+║   █▀█ █   █▀█ █▄█ ██▄ █ ▀█  █      █▀█ █▄█ █▄▀ █  █               ║
+║                                                                   ║
+║   &gt;&gt; LOCAL EXPOSURE SURFACE — v2 — 15 MODULES — READ-ONLY &lt;&lt;      ║
+╚═══════════════════════════════════════════════════════════════════╝</pre></div>
 
 <div class="title-bar">
   <span class="left">// HOST: ${hostname_v}</span>
@@ -549,42 +595,56 @@ a:hover { color: var(--neon); }
 
 HTML_HEAD
 
-  # ASCII skull only when score is low (below 50)
-  if (( score < 50 )); then
-    cat >> "$out" <<'HTML_SKULL'
-<pre class="banner skull">
-                              ___
-                          .-'`   `'.
-                         /          \
-                        ;            ;
-                        |            |
-                        |  .--""--.  |
-                        | (        ) |
-                         \  '.__.'  /
-                          \        /
-                           '.    .'
-                             `''`
-                       _.-'/ . . \'-._
-                     .'   /  X X  \   '.
-                    /   _/ \_____/ \_   \
-                   |   /   _____   \   |
-                   ;  /   |_|_|_|   \  ;
-                    \/   /  ' '  \   \/
-                     `--'         '--'
-                  &gt;&gt; CRITICAL EXPOSURE DETECTED &lt;&lt;
-</pre>
-HTML_SKULL
-  elif (( score >= 80 )); then
-    cat >> "$out" <<'HTML_SHIELD'
-<pre class="banner" style="color: var(--neon);">
-                       .-=+=-.
-                     .=*#####*=.
-                    +###[ OK ]###+
-                    +#####+#####+
-                     +#######+
-                       '-=-'
-                  &gt;&gt; SYSTEM STABLE &lt;&lt;</pre>
-HTML_SHIELD
+  # Status badge — big emoji + framed caption. Renders predictably across browsers
+  # (no fragile monospace ASCII art that breaks at the wrong line width).
+  if (( score < 30 )); then
+    cat >> "$out" <<'HTML_BADGE'
+<div class="status-badge badge-critical">
+  <div class="status-emoji">☠</div>
+  <div class="status-frame">
+    <div class="status-line">▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓</div>
+    <div class="status-caption">// CRITICAL EXPOSURE DETECTED //</div>
+    <div class="status-sub">SYSTEM COMPROMISED — ROTATE EVERYTHING</div>
+    <div class="status-line">▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓</div>
+  </div>
+</div>
+HTML_BADGE
+  elif (( score < 50 )); then
+    cat >> "$out" <<'HTML_BADGE'
+<div class="status-badge badge-danger">
+  <div class="status-emoji">⚠</div>
+  <div class="status-frame">
+    <div class="status-line">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+    <div class="status-caption">// HIGH EXPOSURE //</div>
+    <div class="status-sub">Multiple incident-class vectors pre-loaded</div>
+    <div class="status-line">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+  </div>
+</div>
+HTML_BADGE
+  elif (( score < 70 )); then
+    cat >> "$out" <<'HTML_BADGE'
+<div class="status-badge badge-warning">
+  <div class="status-emoji">◆</div>
+  <div class="status-frame">
+    <div class="status-line">─────────────────────────────────────</div>
+    <div class="status-caption">// HARDENING NEEDED //</div>
+    <div class="status-sub">Hygiene work pending — no incident-class exposure</div>
+    <div class="status-line">─────────────────────────────────────</div>
+  </div>
+</div>
+HTML_BADGE
+  else
+    cat >> "$out" <<'HTML_BADGE'
+<div class="status-badge badge-ok">
+  <div class="status-emoji">✓</div>
+  <div class="status-frame">
+    <div class="status-line">═════════════════════════════════════</div>
+    <div class="status-caption">// SYSTEM STABLE //</div>
+    <div class="status-sub">Maintain hygiene — re-run weekly to detect drift</div>
+    <div class="status-line">═════════════════════════════════════</div>
+  </div>
+</div>
+HTML_BADGE
   fi
 
   # ---------- Section: Keys to rotate ----------
