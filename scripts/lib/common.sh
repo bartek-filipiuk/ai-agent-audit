@@ -166,7 +166,7 @@ is_nx_compromised_version() {
 }
 
 # Standard search paths for user dev projects (used by multiple modules).
-DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src" "$HOME/main-projects")
+DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
 export DEV_SEARCH_PATHS
 
 export -f has emit_finding file_perm_octal file_mtime_unix \
