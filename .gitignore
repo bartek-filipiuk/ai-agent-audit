@@ -1,0 +1,20 @@
+# Audit output (created at runtime)
+.ai-agent-audit/
+audit-report.json
+audit-report.md
+findings/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Local secrets / scratch
+.env
+.env.*
+*.local
+
+# claude-mem auto-generated
+CLAUDE.md
