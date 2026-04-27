@@ -7,16 +7,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 MODULES_TO_RUN="A B C D E F G H I J K L M N P"
+OPEN_HTML=1
 
 # Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --modules) MODULES_TO_RUN="${2//,/ }"; shift 2 ;;
     --output)  AUDIT_DIR="$2"; FINDINGS_DIR="$AUDIT_DIR/findings"; mkdir -p "$FINDINGS_DIR"; shift 2 ;;
+    --no-open) OPEN_HTML=0; shift ;;
     -h|--help)
       cat <<EOF
 ai-agent-audit — local developer machine audit for AI-agent risks
-Usage: $0 [--modules A,B,G] [--output ~/.ai-agent-audit]
+Usage: $0 [--modules A,B,G] [--output ~/.ai-agent-audit] [--no-open]
 
 Modules:
   A  Credentials (SSH, cloud, package managers, env files)
@@ -37,10 +39,14 @@ Modules:
 
 Output:
   \$AUDIT_DIR/findings/<module>.jsonl    — raw findings (JSONL)
-  \$AUDIT_DIR/audit-report.json          — aggregated machine-readable
+  \$AUDIT_DIR/audit-report.json          — aggregated machine-readable (includes score + secrets summary)
   \$AUDIT_DIR/audit-report.md            — human-readable report
+  \$AUDIT_DIR/audit-report.html          — cyberpunk-themed HTML report (auto-opens in browser)
   \$AUDIT_DIR/secrets-inventory.md       — classified secrets (per source, redacted fingerprints)
   \$AUDIT_DIR/action-plan.md             — prioritised checklist (start here)
+
+By default the HTML report auto-opens via xdg-open / open at the end of the run.
+Pass --no-open to skip that.
 EOF
       exit 0 ;;
     *) err "Unknown arg: $1"; exit 1 ;;
@@ -103,8 +109,19 @@ echo "  Audit complete."
 echo "  Reports:"
 echo "    $AUDIT_DIR/audit-report.md"
 echo "    $AUDIT_DIR/audit-report.json"
+[[ -f "$AUDIT_DIR/audit-report.html" ]] && \
+echo "    $AUDIT_DIR/audit-report.html     (cyberpunk HTML — auto-opens in browser)"
 [[ -f "$AUDIT_DIR/secrets-inventory.md" ]] && \
 echo "    $AUDIT_DIR/secrets-inventory.md  (classified secrets, redacted fingerprints)"
 [[ -f "$AUDIT_DIR/action-plan.md" ]] && \
 echo "    $AUDIT_DIR/action-plan.md        (prioritised checklist — start here)"
 echo "═══════════════════════════════════════════════════════════"
+
+# Auto-open HTML report (best-effort; silent fail if no display).
+if [[ "$OPEN_HTML" -eq 1 && -f "$AUDIT_DIR/audit-report.html" ]]; then
+  if [[ "$OS" == "macos" ]] && has open; then
+    open "$AUDIT_DIR/audit-report.html" >/dev/null 2>&1 &
+  elif [[ "$OS" == "linux" ]] && has xdg-open && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+    xdg-open "$AUDIT_DIR/audit-report.html" >/dev/null 2>&1 &
+  fi
+fi

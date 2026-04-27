@@ -94,17 +94,29 @@ build_secrets_grep_pattern() {
 SECRETS_GREP_PATTERN="$(build_secrets_grep_pattern)"
 export SECRETS_GREP_PATTERN
 
+# Sanitize fingerprint chars: replace anything outside printable-ASCII (and backslash,
+# pipe, backtick — they break our markdown / JSON pipelines) with '.'. Length is preserved
+# so the fingerprint is still useful for identification.
+_fp_sanitize() {
+  printf '%s' "$1" | LC_ALL=C tr -c '[:alnum:]_@/+=:.\-' '.'
+}
+
 # Redact a secret to a fingerprint: "AKIA****ABCD (20 chars)".
 # For very short matches, returns just "**** (N chars)" — never leaks middle bytes.
 redact_fingerprint() {
   local s="$1"
   local n=${#s}
+  local head_s tail_s
   if (( n <= 8 )); then
     printf '**** (%d chars)' "$n"
   elif (( n <= 12 )); then
-    printf '%s****%s (%d chars)' "${s:0:2}" "${s: -2}" "$n"
+    head_s=$(_fp_sanitize "${s:0:2}")
+    tail_s=$(_fp_sanitize "${s: -2}")
+    printf '%s****%s (%d chars)' "$head_s" "$tail_s" "$n"
   else
-    printf '%s****%s (%d chars)' "${s:0:4}" "${s: -4}" "$n"
+    head_s=$(_fp_sanitize "${s:0:4}")
+    tail_s=$(_fp_sanitize "${s: -4}")
+    printf '%s****%s (%d chars)' "$head_s" "$tail_s" "$n"
   fi
 }
 
@@ -278,7 +290,7 @@ scan_classify_files_aggregated() {
   printf '%s' "$total"
 }
 
-export -f redact_fingerprint classify_secret_match \
+export -f _fp_sanitize redact_fingerprint classify_secret_match \
           ensure_secrets_inventory_header \
           scan_classify_to_inventory scan_classify_stdin_to_inventory \
           scan_classify_files_aggregated

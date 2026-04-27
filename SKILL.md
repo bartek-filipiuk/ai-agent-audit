@@ -64,11 +64,21 @@ bash scripts/run-audit.sh
 
 The script:
 - Detects OS (Darwin / Linux), shell, available tools
-- Runs each module in order (A through J)
-- Writes raw findings to `~/.ai-agent-audit/findings/<module>.json`
-- Aggregates into `~/.ai-agent-audit/audit-report.json` and `~/.ai-agent-audit/audit-report.md`
+- Runs each module in order (A through N, plus P on macOS)
+- Writes raw findings to `~/.ai-agent-audit/findings/<module>.jsonl`
+- Aggregates into five artefacts:
+  - `~/.ai-agent-audit/audit-report.json` (with security score 0-100, grade letter, secrets summary)
+  - `~/.ai-agent-audit/audit-report.md` (severity-grouped, full remediation per finding)
+  - `~/.ai-agent-audit/audit-report.html` (cyberpunk-themed; **auto-opens in browser** at end of run via `xdg-open` / `open`)
+  - `~/.ai-agent-audit/secrets-inventory.md` (per-source classified secrets with redacted fingerprints)
+  - `~/.ai-agent-audit/action-plan.md` (prioritised checklist — start here)
 
 If the user wants only specific modules: `bash scripts/run-audit.sh --modules A,B,G`
+
+To skip the auto-open of the HTML report (e.g. when running in a sandbox without a display), add `--no-open`.
+
+The HTML report includes a security score (0-100) computed as:
+`100 − 5×CRITICAL − 1.7×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct_secrets ÷ 20, capped 10)`, floor 0. Grades: ≥90 S/Hardened, ≥80 A/Solid, ≥70 B/OK-ish, ≥60 C/Concerning, ≥50 D/At Risk, ≥30 E/Critical Exposure, <30 F/Pwned-Ready (skull rendered for sub-50 scores).
 
 ### Step 3 — Read the findings and present
 

@@ -32,7 +32,9 @@ The same scripts run on both platforms. Module checks adapt automatically: `laun
 ## What it does
 
 - **Fifteen audit modules (A–N plus P)** covering credentials, AI tool configuration, token scope, environment separation, backups, sandboxing, supply-chain compromise indicators (Nx-style and post-Nx), browser and password-manager session state, network egress, credential leakage in shell history and AI session transcripts (with per-secret service classification), AI hooks and repository-level configs, agent skills supply chain, MCP server inventory, known compromised packages, and macOS-specific privacy and persistence checks.
-- **Four reports per run.** `audit-report.md` is human-readable and grouped by severity, with full remediation per finding. `audit-report.json` contains every finding for scripting and diffing across runs. `secrets-inventory.md` lists every detected credential pattern, classified by service, with a redacted fingerprint and a direct pointer to the right rotation panel. `action-plan.md` is the prioritised checklist — start here. It presents a summary-by-service rotation table plus per-source breakdown, then groups findings into TODAY (critical) / THIS WEEK (high) / THIS MONTH (medium) buckets so you can work top-to-bottom without re-reading the full report.
+- **Five reports per run.** `audit-report.md` is human-readable and grouped by severity, with full remediation per finding. `audit-report.json` contains every finding for scripting and diffing across runs, plus a security score, grade letter, and per-service secrets summary. `audit-report.html` is a self-contained cyberpunk-themed HTML view that auto-opens in the browser at the end of the run — score gauge, severity strip, secrets table, collapsible findings, ASCII skull on sub-50 scores. `secrets-inventory.md` lists every detected credential pattern, classified by service, with a redacted fingerprint and a direct pointer to the right rotation panel. `action-plan.md` is the prioritised checklist — start here. It presents a summary-by-service rotation table plus per-source breakdown, then groups findings into TODAY (critical) / THIS WEEK (high) / THIS MONTH (medium) buckets so you can work top-to-bottom without re-reading the full report.
+
+- **Security score (0-100).** Single-number summary: `100 − 5×CRITICAL − 1.7×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct_secrets ÷ 20, capped 10)`, floored at 0. Grades from S (≥90, "Hardened") through F (<30, "Pwned-Ready"). Score is displayed in `audit-report.json`, `audit-report.md`, and the HTML report. It is intentionally pessimistic — a developer machine should aim for 70+, hardened ones reach 90+. Anything below 50 is the "rotate everything" zone.
 - **Hard guarantees.** Read-only on the host filesystem outside the output directory. No network calls. No secret values are ever written to disk or shown on screen — only paths, types, counts, and `XXXX****YYYY (N chars)` fingerprints sufficient to identify which key it is in your provider UI but insufficient to use.
 
 ## Requirements
@@ -137,8 +139,9 @@ After a run:
 ```
 ~/.ai-agent-audit/
 ├── action-plan.md            # prioritised checklist — start here
+├── audit-report.html         # cyberpunk-themed HTML — auto-opens in browser
 ├── audit-report.md           # human-readable, severity-grouped, full remediation per finding
-├── audit-report.json         # all findings as JSON
+├── audit-report.json         # all findings as JSON, with score + secrets summary
 ├── secrets-inventory.md      # per-source classified secrets, redacted fingerprints, rotate URLs
 └── findings/
     ├── A.jsonl
@@ -146,7 +149,7 @@ After a run:
     └── ...
 ```
 
-**Read order: open `action-plan.md` first.** It contains everything you need to start work — keys to rotate (table grouped by service, then full breakdown by source) and findings ordered by urgency (CRITICAL today, HIGH this week, MEDIUM this month). The other three artefacts are for reference, machine consumption, and detailed remediation.
+**Read order: the HTML report auto-opens — start there for the visual / score view, then `action-plan.md` for the actionable checklist.** The HTML contains everything (score, secrets table, findings) at a glance with a Matrix-style aesthetic. The action plan is plain markdown for those who prefer a terminal-only workflow. The other three artefacts are for machine consumption, deep-detail browsing, and per-source secret rotation.
 
 ## Severity rubric
 
@@ -195,7 +198,8 @@ ai-agent-audit/
 │   ├── lib/
 │   │   ├── common.sh                  # shared helpers, OS detection, json_decode_field
 │   │   ├── secrets.sh                 # secret classification database, redact_fingerprint
-│   │   └── action_plan.sh             # generates action-plan.md from findings + inventory
+│   │   ├── action_plan.sh             # generates action-plan.md from findings + inventory
+│   │   └── html_report.sh             # generates cyberpunk-themed audit-report.html + score
 │   └── modules/
 │       ├── A_credentials.sh
 │       ├── B_ai_tools.sh
