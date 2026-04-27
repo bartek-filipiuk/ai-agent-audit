@@ -10,7 +10,7 @@ log "$MODULE" "Starting environment separation audit..."
 
 # AWS profiles — count distinct profiles
 if [[ -f "$HOME/.aws/config" ]]; then
-  profile_count=$(grep -cE '^\[profile' "$HOME/.aws/config" 2>/dev/null || echo 0)
+  profile_count=$(grep -cE '^\[profile' "$HOME/.aws/config" 2>/dev/null) || profile_count=0
   if [[ "$profile_count" -le 1 ]]; then
     emit_finding "$MODULE" "MEDIUM" "D.aws.single" \
       "AWS has only $profile_count profile(s)" \
@@ -27,8 +27,8 @@ fi
 
 # SSH config — look for prod-* aliases
 if [[ -f "$HOME/.ssh/config" ]]; then
-  prod_hosts=$(grep -ciE '^Host\s+(prod|production)' "$HOME/.ssh/config" 2>/dev/null || echo 0)
-  total_hosts=$(grep -cE '^Host\s+' "$HOME/.ssh/config" 2>/dev/null || echo 0)
+  prod_hosts=$(grep -ciE '^Host\s+(prod|production)' "$HOME/.ssh/config" 2>/dev/null) || prod_hosts=0
+  total_hosts=$(grep -cE '^Host\s+' "$HOME/.ssh/config" 2>/dev/null) || total_hosts=0
   if [[ "$total_hosts" -gt 0 ]]; then
     emit_finding "$MODULE" "INFO" "D.ssh" \
       "SSH config has $total_hosts host(s), $prod_hosts marked as prod" \

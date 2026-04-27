@@ -22,7 +22,9 @@ HAS_SQLITE=$(has sqlite3 && echo 1 || echo 0)
 HAS_GH=$(has gh && echo 1 || echo 0)
 HAS_NPM=$(has npm && echo 1 || echo 0)
 HAS_AWS=$(has aws && echo 1 || echo 0)
-export HAS_JQ HAS_SQLITE HAS_GH HAS_NPM HAS_AWS
+HAS_PYTHON3=$(has python3 && echo 1 || echo 0)
+HAS_PERL=$(has perl && echo 1 || echo 0)
+export HAS_JQ HAS_SQLITE HAS_GH HAS_NPM HAS_AWS HAS_PYTHON3 HAS_PERL
 
 # --- Logging ---
 log()    { printf '\033[1;34m[%s]\033[0m %s\n' "$1" "$2" >&2; }
@@ -36,8 +38,8 @@ err()    { printf '\033[1;31m[ERR]\033[0m %s\n' "$1" >&2; }
 emit_finding() {
   local module="$1" severity="$2" id="$3" title="$4" evidence="$5" remediation="$6" incident="${7:-}"
   local out="$FINDINGS_DIR/$module.jsonl"
-  # JSON-escape minimal: replace " with \", and \n with literal \n in fields.
-  esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g'; }
+  # JSON-escape minimal: backslash, quote, newline, tab, control chars.
+  esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e $'s/\t/\\\\t/g' -e ':a;N;$!ba;s/\n/\\n/g'; }
   printf '{"module":"%s","severity":"%s","id":"%s","title":"%s","evidence":"%s","remediation":"%s","incident":"%s","ts":"%s"}\n' \
     "$(esc "$module")" "$(esc "$severity")" "$(esc "$id")" \
     "$(esc "$title")" "$(esc "$evidence")" "$(esc "$remediation")" \
@@ -55,6 +57,65 @@ file_perm_octal() {
   else
     stat -c '%a' "$f" 2>/dev/null
   fi
+}
+
+# File mtime as unix timestamp (cross-platform)
+file_mtime_unix() {
+  local f="$1"
+  if [[ "$OS" == "macos" ]]; then
+    stat -f '%m' "$f" 2>/dev/null
+  else
+    stat -c '%Y' "$f" 2>/dev/null
+  fi
+}
+
+# Safe count of lines matching pattern. Always returns a clean integer (0 on error/no match).
+# Replacement for the `$(grep -c '...' file 2>/dev/null || echo 0)` pattern, which produced "0\n0"
+# when grep printed "0\n" on no matches AND fell through to the || branch (exit 1).
+count_matches() {
+  local pattern="$1" file="$2" flags="${3:-E}"
+  local count=0
+  if [[ -r "$file" ]]; then
+    count=$(grep -c -"$flags" "$pattern" "$file" 2>/dev/null) || count=0
+  fi
+  printf '%s' "${count:-0}" | tr -d '[:space:]'
+}
+
+# Count individual occurrences of a pattern (not just matching lines).
+count_pattern_matches() {
+  local pattern="$1" file="$2"
+  local count=0
+  if [[ -r "$file" ]]; then
+    count=$(grep -oE "$pattern" "$file" 2>/dev/null | wc -l)
+  fi
+  printf '%s' "${count:-0}" | tr -d '[:space:]'
+}
+
+# Decode a single field from a JSON object string. Tries jq → python3 → perl → sed (lossy).
+# Usage: json_decode_field "$json_line" "remediation"
+# Critical: handles escaped quotes \" inside the value (which sed `[^"]*` cannot).
+json_decode_field() {
+  local json="$1" field="$2"
+  if [[ "$HAS_JQ" -eq 1 ]]; then
+    printf '%s' "$json" | jq -r --arg f "$field" '.[$f] // ""' 2>/dev/null
+    return
+  fi
+  if [[ "$HAS_PYTHON3" -eq 1 ]]; then
+    printf '%s' "$json" | python3 -c "import sys,json
+try:
+  d=json.loads(sys.stdin.read())
+  sys.stdout.write(str(d.get('$field','')))
+except Exception: pass" 2>/dev/null
+    return
+  fi
+  if [[ "$HAS_PERL" -eq 1 ]]; then
+    printf '%s' "$json" | perl -MJSON::PP -e 'my $j=JSON::PP->new->decode(<STDIN>); print $j->{"'"$field"'"} // "";' 2>/dev/null
+    return
+  fi
+  # Fallback: greedy sed that handles escaped quotes (best-effort, not bulletproof).
+  # Match anything that's not a bare quote, allowing \" inside.
+  printf '%s' "$json" | sed -nE 's/.*"'"$field"'":"((\\.|[^"\\])*)".*/\1/p' \
+    | sed -e 's/\\"/"/g' -e 's/\\n/\n/g' -e 's/\\t/\t/g' -e 's/\\\\/\\/g'
 }
 
 # Test if SSH private key has a passphrase. Returns 0 if has passphrase, 1 if no passphrase, 2 if can't determine.
@@ -104,4 +165,11 @@ is_nx_compromised_version() {
   esac
 }
 
-export -f has emit_finding file_perm_octal ssh_key_has_passphrase find_nx_versions is_nx_compromised_version log warn err
+# Standard search paths for user dev projects (used by multiple modules).
+DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src" "$HOME/main-projects")
+export DEV_SEARCH_PATHS
+
+export -f has emit_finding file_perm_octal file_mtime_unix \
+          count_matches count_pattern_matches json_decode_field \
+          ssh_key_has_passphrase find_nx_versions is_nx_compromised_version \
+          log warn err

@@ -6,7 +6,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-MODULES_TO_RUN="A B C D E F G H I J"
+MODULES_TO_RUN="A B C D E F G H I J K L M N P"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -28,12 +28,18 @@ Modules:
   G  Nx-style compromise detection
   H  Browser / password manager session state
   I  Network egress controls
-  J  Shell history + AI session credential leak detection
+  J  Shell history + AI session credential leak detection (with secret classification)
+  K  AI hooks + repo-level config files (CVE-2025-59536 / CVE-2026-21852)
+  L  AI skills / plugins supply-chain (ToxicSkills, ClawHub)
+  M  MCP server inventory + risk
+  N  Compromised package detection (axios mar 2026, Bitwarden CLI 2026.4.0, Nx, etc.)
+  P  macOS-specific (TCC, LaunchAgents, Time Machine, Spotlight, SIP) — skips on Linux
 
 Output:
   \$AUDIT_DIR/findings/<module>.jsonl    — raw findings (JSONL)
   \$AUDIT_DIR/audit-report.json          — aggregated machine-readable
   \$AUDIT_DIR/audit-report.md            — human-readable report
+  \$AUDIT_DIR/secrets-inventory.md       — classified secrets (per source, redacted fingerprints)
 EOF
       exit 0 ;;
     *) err "Unknown arg: $1"; exit 1 ;;
@@ -52,7 +58,17 @@ declare -A MODULE_SCRIPTS=(
   [H]="H_browser_session.sh"
   [I]="I_network.sh"
   [J]="J_history_sessions.sh"
+  [K]="K_hooks.sh"
+  [L]="L_skills.sh"
+  [M]="M_mcp.sh"
+  [N]="N_packages.sh"
+  [P]="P_macos.sh"
 )
+
+# Reset secrets inventory at the start of each run so it reflects the current scan only.
+SECRETS_INVENTORY="${AUDIT_DIR}/secrets-inventory.md"
+rm -f "$SECRETS_INVENTORY"
+export SECRETS_INVENTORY
 
 echo
 echo "═══════════════════════════════════════════════════════════"
@@ -86,4 +102,6 @@ echo "  Audit complete."
 echo "  Reports:"
 echo "    $AUDIT_DIR/audit-report.md"
 echo "    $AUDIT_DIR/audit-report.json"
+[[ -f "$AUDIT_DIR/secrets-inventory.md" ]] && \
+echo "    $AUDIT_DIR/secrets-inventory.md  (classified secrets, redacted fingerprints)"
 echo "═══════════════════════════════════════════════════════════"

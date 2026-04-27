@@ -72,7 +72,7 @@ fi
 # AWS
 if [[ -f "$HOME/.aws/credentials" ]]; then
   perms=$(file_perm_octal "$HOME/.aws/credentials")
-  profile_count=$(grep -cE '^\[' "$HOME/.aws/credentials" 2>/dev/null || echo 0)
+  profile_count=$(grep -cE '^\[' "$HOME/.aws/credentials" 2>/dev/null) || profile_count=0
 
   # Check for long-lived AKIA keys (vs SSO/temporary STS)
   if grep -qE 'aws_access_key_id\s*=\s*AKIA' "$HOME/.aws/credentials" 2>/dev/null; then
@@ -104,7 +104,7 @@ done
 
 # Kubernetes
 if [[ -f "$HOME/.kube/config" ]]; then
-  ctx_count=$(grep -cE '^\s*name:' "$HOME/.kube/config" 2>/dev/null || echo 0)
+  ctx_count=$(grep -cE '^\s*name:' "$HOME/.kube/config" 2>/dev/null) || ctx_count=0
   emit_finding "$MODULE" "MEDIUM" "A.2.k8s" \
     "Kubernetes config present (~/.kube/config) with $ctx_count context entries" \
     "kubectl bound to whatever clusters are listed. Agent with shell access can run kubectl against any of them." \

@@ -9,6 +9,10 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 OUT_JSON="$AUDIT_DIR/audit-report.json"
 OUT_MD="$AUDIT_DIR/audit-report.md"
+SECRETS_INVENTORY="$AUDIT_DIR/secrets-inventory.md"
+
+# All modules ever produced (alphabetical letters used as IDs).
+ALL_MODULES="A B C D E F G H I J K L M N P"
 
 # ---------- JSON output ----------
 {
@@ -71,6 +75,11 @@ TOTAL=$((CRIT + HIGH + MED + LOW + INFO))
     echo
   fi
 
+  if [[ -f "$SECRETS_INVENTORY" ]]; then
+    echo "> 🔑 **Secrets inventory** generated separately at \`$SECRETS_INVENTORY\` — classifies each detected pattern by service and shows what to rotate."
+    echo
+  fi
+
   # Render findings by severity
   for sev in CRITICAL HIGH MEDIUM LOW INFO; do
     local_count=$(count_sev "$sev")
@@ -88,42 +97,39 @@ TOTAL=$((CRIT + HIGH + MED + LOW + INFO))
     echo "## $emoji $sev findings ($local_count)"
     echo
 
-    # Iterate through all findings of this severity, in module order
-    for module_letter in A B C D E F G H I J; do
+    # Iterate through all findings of this severity, in module order.
+    for module_letter in $ALL_MODULES; do
       f="$FINDINGS_DIR/$module_letter.jsonl"
       [[ -f "$f" ]] || continue
       while IFS= read -r line; do
         [[ -z "$line" ]] && continue
-        if echo "$line" | grep -q '"severity":"'"$sev"'"'; then
-          # Extract fields with simple sed (avoid jq dependency)
-          id=$(echo "$line"      | sed -nE 's/.*"id":"([^"]*)".*/\1/p')
-          title=$(echo "$line"   | sed -nE 's/.*"title":"([^"]*)".*/\1/p')
-          evidence=$(echo "$line"| sed -nE 's/.*"evidence":"([^"]*)".*/\1/p')
-          remed=$(echo "$line"   | sed -nE 's/.*"remediation":"([^"]*)".*/\1/p')
-          incident=$(echo "$line"| sed -nE 's/.*"incident":"([^"]*)".*/\1/p')
+        # Quick severity filter (avoid decoding fields for irrelevant findings).
+        printf '%s' "$line" | grep -q '"severity":"'"$sev"'"' || continue
 
-          # Unescape \n
-          evidence=$(printf '%b' "${evidence//\\n/$'\n'}")
-          remed=$(printf '%b' "${remed//\\n/$'\n'}")
+        id=$(json_decode_field "$line" "id")
+        title=$(json_decode_field "$line" "title")
+        evidence=$(json_decode_field "$line" "evidence")
+        remed=$(json_decode_field "$line" "remediation")
+        incident=$(json_decode_field "$line" "incident")
 
-          echo "### \`[$module_letter.$id]\` $title"
+        echo "### \`[$module_letter.$id]\` $title"
+        echo
+        if [[ -n "$evidence" ]]; then
+          echo "**Evidence:**"
           echo
-          if [[ -n "$evidence" ]]; then
-            echo "**Evidence:**"
-            echo
-            echo "$evidence" | sed 's/^/> /'
-            echo
-          fi
-          if [[ -n "$remed" ]]; then
-            echo "**Remediation:**"
-            echo
-            echo "$remed"
-            echo
-          fi
-          if [[ -n "$incident" ]]; then
-            echo "**Related incident:** $incident"
-            echo
-          fi
+          # Render evidence as a blockquote (preserve embedded newlines).
+          printf '%s\n' "$evidence" | sed 's/^/> /'
+          echo
+        fi
+        if [[ -n "$remed" ]]; then
+          echo "**Remediation:**"
+          echo
+          printf '%s\n' "$remed"
+          echo
+        fi
+        if [[ -n "$incident" ]]; then
+          echo "**Related incident:** $incident"
+          echo
         fi
       done < "$f"
     done
@@ -156,4 +162,5 @@ TOTAL=$((CRIT + HIGH + MED + LOW + INFO))
 
 log "AGG" "Report written: $OUT_MD"
 log "AGG" "JSON written:   $OUT_JSON"
+[[ -f "$SECRETS_INVENTORY" ]] && log "AGG" "Secrets inventory: $SECRETS_INVENTORY"
 log "AGG" "Findings: CRITICAL=$CRIT HIGH=$HIGH MEDIUM=$MED LOW=$LOW INFO=$INFO"

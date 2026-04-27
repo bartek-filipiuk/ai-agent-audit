@@ -45,7 +45,7 @@ fi
 
 # npm token list
 if [[ "$HAS_NPM" -eq 1 ]] && npm whoami >/dev/null 2>&1; then
-  tokens=$(npm token list 2>/dev/null | grep -cE '^Token' || echo 0)
+  tokens=$(npm token list 2>/dev/null | grep -cE '^Token') || tokens=0
   if [[ "$tokens" -gt 0 ]]; then
     emit_finding "$MODULE" "MEDIUM" "C.npm" \
       "$tokens npm token(s) for current account" \
