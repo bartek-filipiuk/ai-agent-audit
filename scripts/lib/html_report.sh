@@ -9,15 +9,23 @@
 # Output:
 #   $AUDIT_DIR/audit-report.html
 
-# ---------- Security scoring ----------
+# ---------- Security scoring (v2) ----------
 #
 # Algorithm (start at 100):
 #   - 5    per CRITICAL
-#   - 1.7  per HIGH
+#   - 2.5  per HIGH                            (CVSS-aligned — HIGH ≈ 50% of CRITICAL)
 #   - 0.3  per MEDIUM
 #   - 0.05 per LOW
-#   - 1    per 20 distinct classified secrets in inventory (capped at -10)
+#   - 1    per 15 distinct classified secrets in inventory (capped at -15)
+#   - 10   COMPOUND penalty if the host is a supply-chain distributor:
+#          (MCP server launched via unpinned npx) AND
+#          (npm publish-capable token OR GitHub PAT with workflow/admin scope)
 #   - floor at 0
+#
+# The compound penalty captures something the per-finding totals miss: when a
+# machine has both "I run untrusted code at every agent invocation" (npx mcp)
+# and "I publish packages others install" (npm/gh writes), a single trojaned
+# upstream can take down the entire user base — not just this host.
 #
 # Grades:
 #    90-100  S  "Hardened"           (rare — full hygiene)
@@ -31,13 +39,14 @@
 # This is intentionally pessimistic — a developer machine should score ~70+
 # and a hardened one ~90+. Anything below 50 is a "rotate everything" zone.
 compute_security_score() {
-  local crit="$1" high="$2" med="$3" low="$4" secrets="$5"
-  awk -v c="$crit" -v h="$high" -v m="$med" -v l="$low" -v s="$secrets" '
+  local crit="$1" high="$2" med="$3" low="$4" secrets="$5" compound="${6:-0}"
+  awk -v c="$crit" -v h="$high" -v m="$med" -v l="$low" -v s="$secrets" -v cp="$compound" '
     BEGIN {
-      score = 100 - 5*c - 1.7*h - 0.3*m - 0.05*l
-      sp = s / 20
-      if (sp > 10) sp = 10
+      score = 100 - 5*c - 2.5*h - 0.3*m - 0.05*l
+      sp = s / 15
+      if (sp > 15) sp = 15
       score -= sp
+      if (cp == 1) score -= 10
       if (score < 0) score = 0
       printf "%d", score
     }'
@@ -579,7 +588,7 @@ a:hover { color: var(--neon); }
   <div class="score-meta">
     <div class="diagnosis">${diagnosis}</div>
     <div class="muted" style="font-size: 0.92em;">
-      Score = 100 − 5×CRITICAL − 1.7×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct&nbsp;secrets&nbsp;÷&nbsp;20, capped&nbsp;at&nbsp;10).
+      Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct&nbsp;secrets&nbsp;÷&nbsp;15, capped&nbsp;at&nbsp;15) − 10 if compound supply-chain risk (MCP unpinned + npm/gh publish creds).
       <br>Floor at 0. Lower = bigger blast radius if a malicious dependency lands on this machine today.
     </div>
   </div>

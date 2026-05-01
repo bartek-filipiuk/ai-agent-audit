@@ -43,8 +43,20 @@ if [[ -f "$SECRETS_INVENTORY" ]]; then
   [[ $SECRETS_DISTINCT -lt 0 ]] && SECRETS_DISTINCT=0
 fi
 
+# Compound risk — "this host is a supply-chain distributor".
+# Triggered when MCP is launched via unpinned npx AND the host holds
+# publish-capable npm/gh credentials. A single trojaned upstream then
+# affects every user of this host's published packages.
+COMPOUND=0
+if grep -hq '"id":"M.2.npx.unpinned"' "$FINDINGS_DIR"/*.jsonl 2>/dev/null; then
+  if grep -hq '"id":"A.3.npm"' "$FINDINGS_DIR"/*.jsonl 2>/dev/null \
+  || grep -hq '"id":"A.7.ghscope"' "$FINDINGS_DIR"/*.jsonl 2>/dev/null; then
+    COMPOUND=1
+  fi
+fi
+
 # Security score (algorithm + grade table live in lib/html_report.sh)
-SCORE=$(compute_security_score "$CRIT" "$HIGH" "$MED" "$LOW" "$SECRETS_DISTINCT")
+SCORE=$(compute_security_score "$CRIT" "$HIGH" "$MED" "$LOW" "$SECRETS_DISTINCT" "$COMPOUND")
 GRADE_TSV=$(compute_grade "$SCORE")
 GRADE_LETTER="${GRADE_TSV%%$'\t'*}"
 GRADE_LABEL="${GRADE_TSV##*$'\t'}"
@@ -149,7 +161,11 @@ build_secrets_summary_json() {
   echo
   echo "**${SCORE}/100** — Grade **${GRADE_LETTER}** (${GRADE_LABEL})"
   echo
-  echo "_Score = 100 − 5×CRITICAL − 1.7×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 20, capped 10), floor 0._"
+  echo "_Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 15, capped 15) − 10 if compound supply-chain risk (MCP unpinned & npm/gh publish creds). Floor 0._"
+  if [[ "$COMPOUND" -eq 1 ]]; then
+    echo
+    echo "> ⚠️ **Compound penalty applied (-10).** Host runs MCP via unpinned npx AND holds publish-capable npm or GitHub credentials — a single trojaned upstream affects every user of this host's published packages."
+  fi
   echo
   echo "## Summary"
   echo
