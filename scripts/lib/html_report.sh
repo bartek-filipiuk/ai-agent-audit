@@ -230,11 +230,21 @@ generate_html_report() {
     [[ $secrets -lt 0 ]] && secrets=0
   fi
 
-  local score grade_full grade_letter grade_label grade_class diagnosis
-  score=$(compute_security_score "$crit" "$high" "$med" "$low" "$secrets")
-  grade_full=$(compute_grade "$score")
-  grade_letter="${grade_full%%$'\t'*}"
-  grade_label="${grade_full##*$'\t'}"
+  # Prefer values pre-computed by aggregate.sh (single source of truth — includes
+  # compound penalty). Fallback to self-compute if generate_html_report runs
+  # standalone, using COMPOUND env var (default 0).
+  local score grade_letter grade_label grade_class diagnosis
+  if [[ -n "${SCORE:-}" && -n "${GRADE_LETTER:-}" ]]; then
+    score="$SCORE"
+    grade_letter="$GRADE_LETTER"
+    grade_label="${GRADE_LABEL:-}"
+  else
+    score=$(compute_security_score "$crit" "$high" "$med" "$low" "$secrets" "${COMPOUND:-0}")
+    local grade_full
+    grade_full=$(compute_grade "$score")
+    grade_letter="${grade_full%%$'\t'*}"
+    grade_label="${grade_full##*$'\t'}"
+  fi
   grade_class=$(compute_grade_class "$score")
   diagnosis=$(_html_diagnosis "$score")
 
