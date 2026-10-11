@@ -1,5 +1,10 @@
 # Improvement plan — October 2026
 
+Status: completed 2026-10-11, see CHANGELOG.md. Deviations from this plan are listed in
+the commit messages (bash 4.4 instead of 4.0, G.1 removed instead of shared, J cap
+findings are <store-id>.capped (e.g. J.2.cc.leak.capped), `.sh` install scripts not flagged, B.4/B.5
+removed, plus two extra commits with fixes found on a real machine).
+
 Execution plan for an autonomous agent (Opus 5.5). Work top to bottom, one task per
 commit, run the verification block of every task before committing, push to
 `origin main` only in the final task after everything passes. Written from a review

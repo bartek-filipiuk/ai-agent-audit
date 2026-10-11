@@ -259,6 +259,7 @@ bash scripts/run-audit.sh --modules J,K,L,M  # the AI-specific cluster
 ai-agent-audit/
 ├── README.md                          # this file
 ├── SKILL.md                           # Claude skill entry point
+├── CHANGELOG.md
 ├── .github/workflows/ci.yml           # shellcheck + tests on Ubuntu and macOS
 ├── docs/
 │   ├── usage-guide.md                 # interpreting results, agent verification prompt
