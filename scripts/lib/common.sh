@@ -71,6 +71,10 @@ json_escape() {
 emit_finding() {
   local module="$1" severity="$2" id="$3" title="$4" evidence="$5" remediation="$6" incident="${7:-}"
   local out="$FINDINGS_DIR/$module.jsonl"
+  # Safety net: no module can persist a raw credential through finding text.
+  title=$(redact_secrets_in_text "$title")
+  evidence=$(redact_secrets_in_text "$evidence")
+  remediation=$(redact_secrets_in_text "$remediation")
   printf '{"module":"%s","severity":"%s","id":"%s","title":"%s","evidence":"%s","remediation":"%s","incident":"%s","ts":"%s"}\n' \
     "$(json_escape "$module")" "$(json_escape "$severity")" "$(json_escape "$id")" \
     "$(json_escape "$title")" "$(json_escape "$evidence")" "$(json_escape "$remediation")" \
@@ -196,11 +200,37 @@ is_nx_compromised_version() {
   esac
 }
 
+# --- Untrusted content ---
+# Text read from files an attacker may control (repo rules files, hook commands, plists)
+# ends up in reports that an AI agent later reads. It is redacted first (so truncation
+# cannot cut a token below the pattern length and leak its prefix), stripped of control
+# characters, cut to max characters and labelled.
+UNTRUSTED_LABEL="[untrusted content]"
+untrusted_text() {
+  local text="$1" max="${2:-80}"
+  text=$(redact_secrets_in_text "$text")
+  text=$(printf '%s' "$text" | tr -d '\000-\037\177')
+  if (( ${#text} > max )); then
+    text="${text:0:max}…"
+  fi
+  printf '%s %s' "$UNTRUSTED_LABEL" "$text"
+}
+
+# untrusted_snippet <file> <line-number> [max] → "<file>:<n> [untrusted content] <snippet>"
+untrusted_snippet() {
+  local file="$1" n="$2" max="${3:-80}"
+  printf '%s:%s %s' "$file" "$n" "$(untrusted_text "$(sed -n "${n}p" "$file" 2>/dev/null)" "$max")"
+}
+
 # Standard search paths for user dev projects (used by multiple modules).
 DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
 export DEV_SEARCH_PATHS
 
-export -f has json_escape emit_finding file_perm_octal file_mtime_unix \
+export -f has json_escape emit_finding untrusted_text untrusted_snippet file_perm_octal file_mtime_unix \
           count_matches count_pattern_matches json_decode_field \
           ssh_key_has_passphrase find_nx_versions is_nx_compromised_version \
           log warn err
+
+# Secret patterns and redaction, needed by emit_finding. secrets.sh does not source
+# common.sh, so there is no cycle.
+source "$(dirname "${BASH_SOURCE[0]}")/secrets.sh"

@@ -94,6 +94,14 @@ build_secrets_grep_pattern() {
 SECRETS_GREP_PATTERN="$(build_secrets_grep_pattern)"
 export SECRETS_GREP_PATTERN
 
+# Replace every known secret pattern in free text with [REDACTED]. emit_finding runs all
+# finding text through this, so a module that echoes a command line or a config value
+# cannot write a credential to disk. '#' never occurs in SECRET_PATTERNS, so it is a
+# safe sed delimiter.
+redact_secrets_in_text() {
+  printf '%s' "$1" | sed -E "s#($SECRETS_GREP_PATTERN)#[REDACTED]#g"
+}
+
 # Sanitize fingerprint chars: replace anything outside printable-ASCII (and backslash,
 # pipe, backtick — they break our markdown / JSON pipelines) with '.'. Length is preserved
 # so the fingerprint is still useful for identification.
@@ -290,7 +298,7 @@ scan_classify_files_aggregated() {
   printf '%s' "$total"
 }
 
-export -f _fp_sanitize redact_fingerprint classify_secret_match \
+export -f _fp_sanitize redact_fingerprint redact_secrets_in_text classify_secret_match \
           ensure_secrets_inventory_header \
           scan_classify_to_inventory scan_classify_stdin_to_inventory \
           scan_classify_files_aggregated

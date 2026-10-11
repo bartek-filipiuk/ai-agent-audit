@@ -26,7 +26,10 @@ GLOBAL_AGENT_SETTINGS=(
 for s in "${GLOBAL_AGENT_SETTINGS[@]}"; do
   [[ -f "$s" ]] || continue
   if grep -q '"hooks"' "$s" 2>/dev/null; then
-    hook_lines=$(grep -nE '"command"\s*:\s*"[^"]+"' "$s" 2>/dev/null | head -5)
+    hook_lines=""
+    while IFS=: read -r n _; do
+      hook_lines+="$(untrusted_snippet "$s" "$n")"$'\n'
+    done < <(grep -nE '"command"\s*:\s*"[^"]+"' "$s" 2>/dev/null | head -5)
     emit_finding "$MODULE" "HIGH" "K.1.cc.hooks" \
       "Global agent hooks defined: $s" \
       "First commands found:"$'\n'"${hook_lines:-(no command field directly visible)}" \
@@ -152,7 +155,8 @@ for f in "${inj_files[@]}"; do
 
   # Classic injection language
   if grep -qiE 'ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now [a-z]+' "$f" 2>/dev/null; then
-    line=$(grep -niE 'ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now [a-z]+' "$f" | head -1)
+    n=$(grep -niE 'ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now [a-z]+' "$f" | head -1 | cut -d: -f1)
+    line=$(untrusted_snippet "$f" "$n")
     emit_finding "$MODULE" "MEDIUM" "K.3.injection" \
       "Prompt-injection text in agent rules: $f" \
       "Line: $line" \
@@ -162,7 +166,8 @@ for f in "${inj_files[@]}"; do
 
   # "Skip / bypass safety" patterns
   if grep -qiE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)' "$f" 2>/dev/null; then
-    line=$(grep -niE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)' "$f" | head -1)
+    n=$(grep -niE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)' "$f" | head -1 | cut -d: -f1)
+    line=$(untrusted_snippet "$f" "$n")
     emit_finding "$MODULE" "HIGH" "K.3.bypass" \
       "Rules file weakens agent safety: $f" \
       "Line: $line" \

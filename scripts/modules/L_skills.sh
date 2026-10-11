@@ -81,10 +81,11 @@ for d in "${SKILL_DIRS[@]}"; do
 
       # Suspicious instructions in SKILL.md (it instructs the AGENT)
       if grep -qiE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)|exfiltrate|silently|without (telling|notifying|asking)' "$skill_md" 2>/dev/null; then
-        line=$(grep -niE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)|exfiltrate|silently|without (telling|notifying|asking)' "$skill_md" | head -1)
+        n=$(grep -niE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)|exfiltrate|silently|without (telling|notifying|asking)' "$skill_md" | head -1 | cut -d: -f1)
+        line=$(untrusted_snippet "$skill_md" "$n")
         emit_finding "$MODULE" "HIGH" "L.2.bypass" \
           "Skill instructions weaken safety / suggest exfiltration: $skill_name" \
-          "Line: $line — Path: $skill_md" \
+          "Line: $line" \
           "Read the entire SKILL.md. If anything looks adversarial — remove the skill: rm -rf \"$skill_dir\". Report the source." \
           "Standard adversarial skill pattern"
       fi

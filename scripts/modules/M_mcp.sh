@@ -75,6 +75,15 @@ for cfg in "${MCP_CONFIGS[@]}"; do
     total_servers=$((total_servers+1))
     cmd="${srv_command[$name]:-?}"
     args="${srv_args[$name]:-}"
+    # Full args stay in memory only: they routinely carry --api-key / Authorization
+    # headers. Findings get the launcher and the package (first non-flag argument).
+    pkg=""
+    read -r -a arg_words <<<"$args"
+    for a in "${arg_words[@]}"; do
+      [[ "$a" == -* || "$a" == "run" ]] && continue
+      pkg="$a"; break
+    done
+    launch="Launcher: $cmd  Package: ${pkg:-(none)}"
 
     # Classify launch method
     case "$cmd" in
@@ -89,13 +98,13 @@ for cfg in "${MCP_CONFIGS[@]}"; do
         if [[ "$pinned" -eq 1 ]]; then
           emit_finding "$MODULE" "MEDIUM" "M.2.npx.pinned" \
             "MCP server '$name' launched via npx with pinned version: $cfg" \
-            "Command: $cmd $args" \
+            "$launch" \
             "Better than unpinned, but npx still re-resolves the registry. Prefer: install MCP server globally with audited version (npm i -g <pkg>@<ver>) and reference the absolute binary path." \
             "MCP marketplace poisoning (April 2026, OX Security)"
         else
           emit_finding "$MODULE" "HIGH" "M.2.npx.unpinned" \
             "MCP server '$name' launched via npx without pinned version: $cfg" \
-            "Command: $cmd $args. npx fetches the latest matching package on every run — supply-chain attack window is permanent." \
+            "$launch. npx fetches the latest matching package on every run — supply-chain attack window is permanent." \
             "Pin a specific version in args (e.g. \"@scope/server@1.2.3\"). Better: install globally with audited version: npm i -g <pkg>@<version>. Replace 'npx' with the absolute path to the installed binary." \
             "9 of 11 MCP marketplaces poisoned with malicious trial balloons (April 2026)"
         fi
@@ -104,24 +113,24 @@ for cfg in "${MCP_CONFIGS[@]}"; do
         total_uvx=$((total_uvx+1))
         emit_finding "$MODULE" "HIGH" "M.2.uvx" \
           "MCP server '$name' launched via uvx: $cfg" \
-          "Command: $cmd $args. uvx fetches and executes Python packages on demand." \
+          "$launch. uvx fetches and executes Python packages on demand." \
           "Pin to specific version with uvx==<ver>. Better: install in a managed venv and reference the binary path." \
           "Same supply-chain risk class as npx"
         ;;
       docker)
         emit_finding "$MODULE" "INFO" "M.2.docker" \
           "MCP server '$name' runs in docker container (good — sandbox boundary)" \
-          "Command: $cmd $args" "" ""
+          "$launch" "" ""
         ;;
       node|python|python3|ruby|/*)
         emit_finding "$MODULE" "INFO" "M.2.local" \
           "MCP server '$name' uses local interpreter or absolute path" \
-          "Command: $cmd $args" "" ""
+          "$launch" "" ""
         ;;
       *)
         emit_finding "$MODULE" "MEDIUM" "M.2.unknown" \
           "MCP server '$name' uses unrecognized launcher: $cmd" \
-          "Command: $cmd $args" \
+          "$launch" \
           "Verify what this is. If it's a one-off tool fetched at runtime, treat as supply-chain risk." \
           ""
         ;;

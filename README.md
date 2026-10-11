@@ -220,6 +220,7 @@ After a run:
 - **Read-only.** The audit never writes outside `~/.ai-agent-audit/` (or `--output`).
 - **No network.** Nothing is sent anywhere. The audit does not perform TruffleHog-style verification calls against vendor APIs to test whether a detected secret is still active. This is by design — the no-network policy is more important than reducing false positives. Treat every detected match as live and rotate accordingly.
 - **No secret values.** Credential patterns are detected by regex, but findings record only path, type, count, and a redacted fingerprint. The user verifies any flagged credential manually with the suggested `grep` command.
+- **Redaction safety net.** Every finding's title, evidence and remediation passes through the secret-pattern redactor before it is written, so a command line or config value that happens to embed a token is stored as `[REDACTED]`. Text copied from files an attacker could control (repo rules files, hook commands, launch agents) is redacted, stripped of control characters, cut to 80 characters and prefixed with `[untrusted content]`, because AI agents read these reports.
 - **No auto-remediation.** Findings include remediation steps, but every fix is run by the user. Especially for token rotation and file deletion — the audit will not act for you.
 
 ## Useful commands after a run

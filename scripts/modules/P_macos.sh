@@ -84,7 +84,7 @@ scan_launch_dir() {
               || echo "(unable to read)")
     emit_finding "$MODULE" "$sev" "P.2.launch" \
       "Unrecognized launch agent/daemon: $plist" \
-      "Label: $base. Program: $program." \
+      "Label: $base. Program: $(untrusted_text "$program" 120)" \
       "Verify this is something you installed. If unrecognized: launchctl unload \"$plist\" && rm \"$plist\". Persistence via LaunchAgents is the standard macOS post-exploit technique." \
       "Sapphire Sleet (April 2026) used LaunchAgents for C2 polling persistence"
   done < <(find "$dir" -maxdepth 1 -name '*.plist' -type f 2>/dev/null)
