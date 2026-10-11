@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="B"
 log "$MODULE" "Starting AI tools config audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # ---------- B.1: Installed AI CLI tools ----------
 declare -a AI_TOOLS=(claude gemini cursor cline aider codex q opencode)

@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        # Stock /bin/bash on macOS is 3.2; the audit requires bash >= 4.
+        run: brew install bash jq shellcheck
+
+      - name: shellcheck
+        run: shellcheck -S warning scripts/*.sh scripts/lib/*.sh scripts/modules/*.sh tests/*.sh
+
+      - name: tests
+        run: |
+          BASH_BIN=$(command -v bash)
+          if [ "$RUNNER_OS" = "macOS" ]; then BASH_BIN="$(brew --prefix)/bin/bash"; fi
+          "$BASH_BIN" --version | head -1
+          "$BASH_BIN" tests/run.sh

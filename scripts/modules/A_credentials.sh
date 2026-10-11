@@ -10,7 +10,7 @@ MODULE="A"
 log "$MODULE" "Starting credentials audit..."
 
 # Reset module findings
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # ---------- A.1: SSH keys ----------
 SSH_DIR="$HOME/.ssh"

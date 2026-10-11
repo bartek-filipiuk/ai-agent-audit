@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="K"
 log "$MODULE" "Starting AI hooks + repo config audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # ---------- K.1: Global Claude Code / Cursor hooks ----------
 GLOBAL_AGENT_SETTINGS=(

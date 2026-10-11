@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="E"
 log "$MODULE" "Starting backup hygiene audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # Detect backup tools
 backup_tool_found=0
@@ -51,7 +51,7 @@ for p in "${ENV_PATHS[@]}"; do
     if [[ "$remote_count" -le 1 ]]; then
       single_remote_repos=$((single_remote_repos+1))
     fi
-    popd >/dev/null 2>&1
+    popd >/dev/null 2>&1 || true
   done < <(find "$p" -maxdepth 3 -type d -name '.git' -exec dirname {} \; 2>/dev/null)
 done
 

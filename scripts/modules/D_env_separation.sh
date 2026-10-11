@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="D"
 log "$MODULE" "Starting environment separation audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # AWS profiles — count distinct profiles
 if [[ -f "$HOME/.aws/config" ]]; then

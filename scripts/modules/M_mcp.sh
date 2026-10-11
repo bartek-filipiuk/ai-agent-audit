@@ -17,7 +17,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="M"
 log "$MODULE" "Starting MCP server inventory and risk audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 MCP_CONFIGS=(
   "$HOME/.cursor/mcp.json"

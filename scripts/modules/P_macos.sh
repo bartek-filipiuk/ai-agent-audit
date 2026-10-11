@@ -20,7 +20,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="P"
 log "$MODULE" "Starting macOS-specific audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 if [[ "$OS" != "macos" ]]; then
   log "$MODULE" "Skipped (not macOS)."
@@ -124,12 +124,6 @@ if has tmutil; then
         "Configure in System Settings → General → Time Machine → Add Backup Disk. Choose an external drive AND enable encryption." \
         "PocketOS — backups in same blast radius as production data"
     else
-      # Detect encryption setting per destination
-      while IFS= read -r line; do
-        if echo "$line" | grep -qE '^Name\s*:'; then
-          dest_name=$(echo "$line" | sed -E 's/^Name\s*:\s*//')
-        fi
-      done <<<"$dest_info"
       if echo "$dest_info" | grep -qi 'Encrypted.*No'; then
         emit_finding "$MODULE" "HIGH" "P.4.tm.unenc" \
           "Time Machine destination is NOT encrypted" \

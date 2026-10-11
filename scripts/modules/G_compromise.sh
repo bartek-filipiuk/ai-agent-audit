@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="G"
 log "$MODULE" "Starting Nx-style compromise detection..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # ---------- G.1: Vulnerable Nx versions ----------
 nx_findings=0

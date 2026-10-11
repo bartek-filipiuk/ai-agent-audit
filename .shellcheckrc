@@ -1,0 +1,5 @@
+# Tildes inside user-facing messages ("~/.aws/credentials has loose permissions") are
+# meant to be printed literally, not expanded.
+disable=SC2088
+external-sources=true
+source-path=SCRIPTDIR

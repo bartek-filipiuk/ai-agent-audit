@@ -278,6 +278,17 @@ ai-agent-audit/
     └── remediation-guides.md          # vendor-specific fix steps
 ```
 
+## Development
+
+Tests run against a throwaway `HOME` with stubbed `gh`, `npm`, `sudo` and friends, so they never read your real credentials or hit the network:
+
+```bash
+bash tests/run.sh
+shellcheck -S warning scripts/*.sh scripts/lib/*.sh scripts/modules/*.sh tests/*.sh
+```
+
+Every behaviour change ships with a test in `tests/test_*.sh` (helpers in `tests/lib.sh`). Fixture secrets are generated at test time with `fake_secret`, never committed. CI runs both commands on Ubuntu and macOS (Homebrew bash).
+
 ## Limitations
 
 - Heuristic regex on history and session files produces false positives — example tokens inside documentation, redacted snippets, regex literals in code. Always verify before treating a finding as a real leak. The fingerprint helps: if the leading four characters match an obvious example like `AKIA0000` or `ghp_xxxx`, deprioritise.

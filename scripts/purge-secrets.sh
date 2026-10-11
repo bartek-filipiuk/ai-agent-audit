@@ -90,9 +90,9 @@ redact() {
 # Show colored severity if terminal supports it.
 if [[ -t 1 ]]; then
   C_RED=$'\033[1;31m'; C_YELLOW=$'\033[1;33m'; C_GREEN=$'\033[1;32m'
-  C_CYAN=$'\033[1;36m'; C_GREY=$'\033[0;37m'; C_RESET=$'\033[0m'
+  C_CYAN=$'\033[1;36m'; C_RESET=$'\033[0m'
 else
-  C_RED=""; C_YELLOW=""; C_GREEN=""; C_CYAN=""; C_GREY=""; C_RESET=""
+  C_RED=""; C_YELLOW=""; C_GREEN=""; C_CYAN=""; C_RESET=""
 fi
 
 header() { printf '\n%s━━━ %s ━━━%s\n' "$C_CYAN" "$1" "$C_RESET"; }

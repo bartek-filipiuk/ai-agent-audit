@@ -169,7 +169,7 @@ scan_classify_to_inventory() {
   local tmp; tmp=$(mktemp)
   local total=0
 
-  local entry pat type_label service rotate sev rest matches match fp row
+  local entry pat type_label service rotate sev rest matches match fp
 
   for entry in "${SECRET_PATTERNS[@]}"; do
     pat="${entry%%|||*}"; rest="${entry#*|||}"

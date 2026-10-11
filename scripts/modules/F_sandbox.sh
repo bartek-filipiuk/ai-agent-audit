@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="F"
 log "$MODULE" "Starting sandbox/isolation audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # Detect if running in a container / VM
 in_container=0

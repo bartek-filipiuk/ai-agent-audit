@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="I"
 log "$MODULE" "Starting network egress audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # Firewall presence
 if [[ "$OS" == "macos" ]]; then

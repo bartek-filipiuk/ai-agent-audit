@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="H"
 log "$MODULE" "Starting browser/session hygiene audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # Detect browser profiles (existence, not content)
 declare -A BROWSERS_MAC=(

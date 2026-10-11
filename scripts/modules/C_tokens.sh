@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="C"
 log "$MODULE" "Starting token scope audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # GitHub
 if [[ "$HAS_GH" -eq 1 ]]; then

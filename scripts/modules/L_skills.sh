@@ -16,7 +16,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="L"
 log "$MODULE" "Starting AI skills / plugins supply-chain audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # Locations to inspect
 SKILL_DIRS=(

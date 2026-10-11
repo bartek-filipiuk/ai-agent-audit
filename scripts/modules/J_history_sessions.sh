@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/../lib/secrets.sh"
 
 MODULE="J"
 log "$MODULE" "Starting shell history + AI sessions audit..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # Wrapper: scan a single file, classify into inventory, emit a finding when secrets are found.
 scan_file_and_finding() {

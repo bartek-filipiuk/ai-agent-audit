@@ -13,7 +13,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 MODULE="N"
 log "$MODULE" "Starting compromised packages detection..."
-> "$FINDINGS_DIR/$MODULE.jsonl"
+: > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # ---------- IOC database ----------
 NPM_COMPROMISED=(
