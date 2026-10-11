@@ -113,7 +113,7 @@ for d in "${EXT_DIRS[@]}"; do
     if [[ -n "$found" ]]; then
       emit_finding "$MODULE" "CRITICAL" "N.3.ext" \
         "Compromised IDE extension installed: $glob" \
-        "Path(s):\n$found" \
+        "Path(s):"$'\n'"$found" \
         "Remove immediately: code --uninstall-extension <id> (or cursor --uninstall-extension). Then: rm -rf the directory. Treat machine as compromised — rotate credentials." \
         "$incident"
     fi

@@ -32,6 +32,38 @@ log()    { printf '\033[1;34m[%s]\033[0m %s\n' "$1" "$2" >&2; }
 warn()   { printf '\033[1;33m[WARN]\033[0m %s\n' "$1" >&2; }
 err()    { printf '\033[1;31m[ERR]\033[0m %s\n' "$1" >&2; }
 
+# --- JSON string escaping ---
+# Prints the body of a JSON string literal (no surrounding quotes) for any input bytes.
+# jq when present (exact, keeps control chars as \uXXXX); otherwise one portable awk pass
+# that escapes \ " tab CR LF and drops the remaining C0 controls and DEL. No GNU-only sed.
+json_escape() {
+  if [[ "$HAS_JQ" -eq 1 ]]; then
+    printf '%s' "$1" | jq -Rs . | sed -e 's/^"//' -e 's/"$//'
+    return
+  fi
+  # Literal replacement via index/substr: gsub() replacement strings treat backslashes
+  # differently in mawk, gawk, BWK awk (macOS) and busybox, so they are avoided here.
+  printf '%s' "$1" | LC_ALL=C awk '
+    function rep(s, from, to,   out, i) {
+      out = ""
+      while ((i = index(s, from)) > 0) {
+        out = out substr(s, 1, i - 1) to
+        s = substr(s, i + length(from))
+      }
+      return out s
+    }
+    BEGIN { ORS = "" }
+    {
+      line = rep($0, "\\", "\\\\")
+      line = rep(line, "\"", "\\\"")
+      line = rep(line, "\t", "\\t")
+      line = rep(line, "\r", "\\r")
+      gsub(/[\001-\010\013\014\016-\037\177]/, "", line)
+      if (NR > 1) printf "\\n"
+      printf "%s", line
+    }'
+}
+
 # --- Findings emitter ---
 # emit_finding <module> <severity> <id> <title> <evidence> <remediation> [incident_ref]
 # Severities: CRITICAL | HIGH | MEDIUM | LOW | INFO
@@ -39,12 +71,10 @@ err()    { printf '\033[1;31m[ERR]\033[0m %s\n' "$1" >&2; }
 emit_finding() {
   local module="$1" severity="$2" id="$3" title="$4" evidence="$5" remediation="$6" incident="${7:-}"
   local out="$FINDINGS_DIR/$module.jsonl"
-  # JSON-escape minimal: backslash, quote, newline, tab, control chars.
-  esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e $'s/\t/\\\\t/g' -e ':a;N;$!ba;s/\n/\\n/g'; }
   printf '{"module":"%s","severity":"%s","id":"%s","title":"%s","evidence":"%s","remediation":"%s","incident":"%s","ts":"%s"}\n' \
-    "$(esc "$module")" "$(esc "$severity")" "$(esc "$id")" \
-    "$(esc "$title")" "$(esc "$evidence")" "$(esc "$remediation")" \
-    "$(esc "$incident")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$(json_escape "$module")" "$(json_escape "$severity")" "$(json_escape "$id")" \
+    "$(json_escape "$title")" "$(json_escape "$evidence")" "$(json_escape "$remediation")" \
+    "$(json_escape "$incident")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     >> "$out"
 }
 
@@ -170,7 +200,7 @@ is_nx_compromised_version() {
 DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
 export DEV_SEARCH_PATHS
 
-export -f has emit_finding file_perm_octal file_mtime_unix \
+export -f has json_escape emit_finding file_perm_octal file_mtime_unix \
           count_matches count_pattern_matches json_decode_field \
           ssh_key_has_passphrase find_nx_versions is_nx_compromised_version \
           log warn err

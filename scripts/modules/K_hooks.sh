@@ -29,7 +29,7 @@ for s in "${GLOBAL_AGENT_SETTINGS[@]}"; do
     hook_lines=$(grep -nE '"command"\s*:\s*"[^"]+"' "$s" 2>/dev/null | head -5)
     emit_finding "$MODULE" "HIGH" "K.1.cc.hooks" \
       "Global agent hooks defined: $s" \
-      "First commands found:\n${hook_lines:-(no command field directly visible)}" \
+      "First commands found:"$'\n'"${hook_lines:-(no command field directly visible)}" \
       "Each hook runs with the user's full privileges on every matching event. Audit each one. If a malicious prompt can trigger a hook (e.g. UserPromptSubmit), that's effectively RCE. Consider running: jq '.hooks' \"$s\" to inspect structure." \
       "CVE-2025-59536 / CVE-2026-21852 — hooks abused for RCE via untrusted prompts/repos"
   fi
@@ -99,14 +99,14 @@ if [[ "${#plain_paths[@]}" -gt 0 ]]; then
   sample=""
   for i in "${!plain_paths[@]}"; do
     [[ "$i" -ge 15 ]] && break
-    sample="$sample- ${plain_paths[$i]}\n"
+    sample="$sample- ${plain_paths[$i]}"$'\n'
   done
   remainder=$(( ${#plain_paths[@]} - 15 ))
   [[ "$remainder" -gt 0 ]] && sample="$sample- ... and $remainder more"
 
   emit_finding "$MODULE" "MEDIUM" "K.2.plain" \
     "${#plain_paths[@]} repo-level rules file(s) (CLAUDE.md / .cursorrules / AGENTS.md) across workspace" \
-    "Each is auto-loaded into agent context when running there. Each is also a potential prompt-injection vector when the repo is untrusted.\n\nFirst entries:\n$sample" \
+    "Each is auto-loaded into agent context when running there. Each is also a potential prompt-injection vector when the repo is untrusted."$'\n\n'"First entries:"$'\n'"$sample" \
     "Cloned/external repos: review the rules files before running an agent in them. Pay attention to anything in K.3 findings (zero-width chars, injection language). Trusted repos: still review on every git pull (rules can change adversarially over time)." \
     "CVE-2025-59536 / CVE-2026-21852 + Snyk ToxicSkills (Feb 2026)"
 fi

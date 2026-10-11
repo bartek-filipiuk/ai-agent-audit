@@ -153,6 +153,10 @@ build_secrets_summary_json() {
   printf '\n  ]\n}\n'
 } > "$OUT_JSON"
 
+if [[ "$HAS_JQ" -eq 1 ]] && ! jq empty "$OUT_JSON" >/dev/null 2>&1; then
+  err "audit-report.json is not valid JSON — the Markdown and HTML reports are still usable. Please report this with the offending findings/*.jsonl line."
+fi
+
 # ---------- Markdown report ----------
 {
   echo "# AI Agent Audit Report"

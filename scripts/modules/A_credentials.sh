@@ -175,14 +175,14 @@ for p in "${ENV_PATHS[@]}"; do
   while IFS= read -r f; do
     [[ -z "$f" ]] && continue
     env_count=$((env_count+1))
-    [[ $env_count -le 3 ]] && env_examples="$env_examples$f\n"
+    [[ $env_count -le 3 ]] && env_examples="$env_examples$f"$'\n'
   done < <(find "$p" -maxdepth 4 -type f \( -name '.env' -o -name '.env.local' -o -name '.env.production' -o -name '.env.prod' \) -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
 done
 
 if [[ $env_count -gt 0 ]]; then
   emit_finding "$MODULE" "HIGH" "A.5.env" \
     "$env_count .env file(s) in dev workspace" \
-    "First examples:\n$env_examples" \
+    "First examples:"$'\n'"$env_examples" \
     "Verify each is in .gitignore. For production secrets use a vault (1Password, Doppler, AWS Secrets Manager, Infisical). Never commit .env." \
     "PocketOS — agent found token in unrelated file and used it to delete production"
 fi
