@@ -10,6 +10,9 @@ MODULES_TO_RUN="$ALL_MODULES"
 OPEN_HTML=1
 OUTPUT_DIR=""
 
+# Children run with "$BASH" (this interpreter), not whatever `bash` is first on PATH:
+# on macOS that may be /bin/bash 3.2 even when this script runs under Homebrew bash.
+
 # Arguments are parsed before common.sh is sourced: common.sh creates the output
 # directory, and it must create the one the user asked for, not the default.
 
@@ -120,12 +123,12 @@ for m in $MODULES_TO_RUN; do
     continue
   fi
   MODULES_RUN="${MODULES_RUN:+$MODULES_RUN }$m"
-  bash "$script_path" || warn "Module $m exited with non-zero"
+  "$BASH" "$script_path" || warn "Module $m exited with non-zero"
 done
 export MODULES_RUN
 
 # Aggregate
-bash "$SCRIPT_DIR/aggregate.sh"
+"$BASH" "$SCRIPT_DIR/aggregate.sh"
 
 # Files from older runs keep their old mode when truncated with '>'; tighten everything.
 chmod -R go-rwx "$AUDIT_DIR" 2>/dev/null

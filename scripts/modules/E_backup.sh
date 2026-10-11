@@ -19,7 +19,8 @@ done
 
 # macOS TimeMachine
 if [[ "$OS" == "macos" ]]; then
-  if tmutil status 2>/dev/null | grep -q 'BackupPhase\|Running'; then
+  # Idle output contains "Running = 0;", so match only an active backup.
+  if tmutil status 2>/dev/null | grep -qE 'Running = 1;|BackupPhase'; then
     emit_finding "$MODULE" "INFO" "E.timemachine" "TimeMachine appears active" "" "" ""
     backup_tool_found=1
   elif has tmutil; then

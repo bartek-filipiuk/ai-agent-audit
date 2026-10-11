@@ -2,6 +2,14 @@
 # Common helpers for ai-agent-audit modules.
 # Sourced by all module scripts. Don't run directly.
 
+# bash >= 4.4: associative arrays, mapfile, and empty "${arr[@]}" under set -u (an
+# "unbound variable" error before 4.4). Stock macOS /bin/bash is 3.2.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+  printf 'ai-agent-audit needs bash >= 4.4 (found %s).\n' "$BASH_VERSION" >&2
+  printf 'macOS: brew install bash, then run: "$(brew --prefix)/bin/bash" %s\n' "$0" >&2
+  exit 2
+fi
+
 # --- Output dirs ---
 AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
 FINDINGS_DIR="$AUDIT_DIR/findings"

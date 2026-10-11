@@ -33,6 +33,13 @@
 # appends to its JSONL while it is being rewritten can lose those lines.
 
 set -u
+# bash >= 4.4: associative arrays, mapfile, and empty "${arr[@]}" under set -u (an
+# "unbound variable" error before 4.4). Stock macOS /bin/bash is 3.2.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+  printf 'ai-agent-audit needs bash >= 4.4 (found %s).\n' "$BASH_VERSION" >&2
+  printf 'macOS: brew install bash, then run: "$(brew --prefix)/bin/bash" %s\n' "$0" >&2
+  exit 2
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
 export AUDIT_DIR

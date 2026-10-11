@@ -28,6 +28,7 @@ The `SKILL.md` at the repo root is what Claude Code auto-discovers.
 
 ```bash
 bash ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh
+# macOS (stock bash is 3.2): "$(brew --prefix)/bin/bash" ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh
 # HTML report auto-opens in your browser at the end.
 ```
 
@@ -81,9 +82,9 @@ The audit reports the blast radius before the next incident does.
 
 ## Platform support
 
-Designed and tested on **Linux** (Debian/Ubuntu, Fedora, Arch) and **macOS** (Intel and Apple Silicon). Shells: `bash` and `zsh`.
+Runs on **Linux** (Debian/Ubuntu, Fedora, Arch) and **macOS** (Intel and Apple Silicon); CI runs the test suite on Ubuntu and macOS. The scripts need **bash 4.4 or newer**. Stock macOS ships bash 3.2 as `/bin/bash`, so install a current one (`brew install bash`) and run the audit with it: `"$(brew --prefix)/bin/bash" scripts/run-audit.sh`. The audit exits with that hint if it is started under an older bash. Your login shell can stay `zsh`.
 
-The same scripts run on both platforms. Module checks adapt automatically: `launchctl`, `socketfilterfw`, `tmutil`, `mdfind` and `csrutil` on macOS; `systemctl`, `ufw`, and `firewalld` on Linux. Module **P** runs only on macOS and skips silently elsewhere. No native Windows support; WSL2 works as a Linux target.
+The same scripts run on both platforms. Module checks adapt automatically: `socketfilterfw`, `tmutil`, `diskutil`, `mdutil`, `csrutil` and the TCC database on macOS; `systemctl`, `ufw`, and `firewalld` on Linux. Module **P** runs only on macOS and skips silently elsewhere. No native Windows support; WSL2 works as a Linux target.
 
 ## What it does
 
@@ -95,7 +96,7 @@ The same scripts run on both platforms. Module checks adapt automatically: `laun
 
 ## Requirements
 
-**Required:** `bash`, and standard POSIX tools (`find`, `grep`, `stat`, `sed`).
+**Required:** `bash` 4.4 or newer (macOS: `brew install bash`), and standard POSIX tools (`find`, `grep`, `stat`, `sed`, `awk`).
 
 **Optional** — modules degrade gracefully when these are missing:
 

@@ -30,11 +30,19 @@ fi
 
 # ---------- P.1: TCC.db (Full Disk Access etc.) ----------
 USER_TCC="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-if [[ -f "$USER_TCC" && "$HAS_SQLITE" -eq 1 ]]; then
-  # High-impact services
+if [[ -f "$USER_TCC" && "$HAS_SQLITE" -eq 1 ]] && \
+   ! sqlite3 "$USER_TCC" 'SELECT 1 FROM access LIMIT 1;' >/dev/null 2>&1; then
+  emit_finding "$MODULE" "INFO" "P.1.tcc.unreadable" \
+    "TCC.db is not readable — privacy permissions were not checked" \
+    "Path: $USER_TCC. Reading it requires Full Disk Access for the terminal running the audit." \
+    "Grant your terminal Full Disk Access (System Settings → Privacy & Security → Full Disk Access), re-run the audit, then revoke it again." \
+    ""
+elif [[ -f "$USER_TCC" && "$HAS_SQLITE" -eq 1 ]]; then
+  # High-impact services. Since macOS 11 the column is auth_value
+  # (0 denied, 1 unknown, 2 allowed, 3 limited); the old 'allowed' column is gone.
   while IFS='|' read -r client service allowed; do
     [[ -z "$client" ]] && continue
-    if [[ "$allowed" == "1" || "$allowed" == "2" ]]; then
+    if [[ "$allowed" == "2" || "$allowed" == "3" ]]; then
       case "$service" in
         kTCCServiceSystemPolicyAllFiles)  svc_label="Full Disk Access" ;;
         kTCCServiceAppleEvents)           svc_label="AppleEvents (can drive other apps)" ;;
@@ -49,12 +57,12 @@ if [[ -f "$USER_TCC" && "$HAS_SQLITE" -eq 1 ]]; then
       [[ "$service" == "kTCCServiceSystemPolicyAllFiles" || "$service" == "kTCCServiceAppleEvents" || "$service" == "kTCCServiceAccessibility" ]] && sev="MEDIUM"
       emit_finding "$MODULE" "$sev" "P.1.tcc" \
         "TCC: $client has $svc_label" \
-        "Service: $service. Allowed value: $allowed." \
+        "Service: $service. auth_value: $allowed (2 allowed, 3 limited)." \
         "Review in System Settings → Privacy & Security → $svc_label. Revoke if not needed. Especially for AI agents — these permissions persist across launches and any process using the app's bundle id inherits them." \
         "Sapphire Sleet macOS campaign (April 2026) manipulated TCC.db to grant AppleEvents to osascript silently"
     fi
   done < <(sqlite3 -separator '|' "$USER_TCC" \
-    "SELECT client, service, allowed FROM access WHERE service IN (
+    "SELECT client, service, auth_value FROM access WHERE auth_value IN (2,3) AND service IN (
        'kTCCServiceSystemPolicyAllFiles',
        'kTCCServiceAppleEvents',
        'kTCCServiceAccessibility',
@@ -75,6 +83,16 @@ scan_launch_dir() {
   while IFS= read -r plist; do
     [[ -z "$plist" ]] && continue
     base=$(basename "$plist" .plist)
+    # Apple never installs per-user agents, so com.apple.* under ~/Library/LaunchAgents is
+    # the classic masquerade — the one place the vendor whitelist must not apply to it.
+    if [[ "$dir" == "$HOME/"* && "$base" == com.apple.* ]]; then
+      emit_finding "$MODULE" "HIGH" "P.2.masquerade" \
+        "Per-user launch agent claims to be Apple: $plist" \
+        "Label: $base. Apple ships no agents in ~/Library/LaunchAgents; a com.apple.* name there is a common malware disguise." \
+        "Inspect it: plutil -p \"$plist\". If you did not create it: launchctl unload \"$plist\" && rm \"$plist\", then treat the machine as compromised and rotate credentials." \
+        "Sapphire Sleet (April 2026) used LaunchAgents for C2 polling persistence"
+      continue
+    fi
     if printf '%s' "$base" | grep -qE "$WHITELIST_PREFIXES"; then
       continue
     fi
@@ -124,9 +142,17 @@ if has tmutil; then
         "Configure in System Settings → General → Time Machine → Add Backup Disk. Choose an external drive AND enable encryption." \
         "PocketOS — backups in same blast radius as production data"
     else
-      if echo "$dest_info" | grep -qi 'Encrypted.*No'; then
+      # tmutil does not report encryption; ask diskutil about each mounted destination.
+      unencrypted=""
+      while IFS= read -r mount; do
+        [[ -z "$mount" || ! -d "$mount" ]] && continue
+        if ! diskutil info "$mount" 2>/dev/null | grep -qE '^[[:space:]]*(Encrypted|FileVault):[[:space:]]+Yes'; then
+          unencrypted="${unencrypted:+$unencrypted, }$mount"
+        fi
+      done < <(printf '%s\n' "$dest_info" | sed -nE 's/^Mount Point[[:space:]]*:[[:space:]]*//p')
+      if [[ -n "$unencrypted" ]]; then
         emit_finding "$MODULE" "HIGH" "P.4.tm.unenc" \
-          "Time Machine destination is NOT encrypted" \
+          "Time Machine destination is NOT encrypted: $unencrypted" \
           "Backup contains every file on disk including ~/.ssh, keychains, browser data. Unencrypted = same risk as the original drive being stolen, but with longer-term retention." \
           "Re-create the backup destination with encryption enabled. Settings → General → Time Machine → '+' → check Encrypt Backups." \
           ""
@@ -151,26 +177,16 @@ if has brew; then
   done < <(brew tap 2>/dev/null)
 fi
 
-# ---------- P.6: Spotlight indexing of credential dirs ----------
-# `mdfind` searches the live index; if it returns hits in ~/.aws or ~/.ssh, the secrets are
-# searchable from any Spotlight query.
-if has mdfind; then
-  hits=$(mdfind -onlyin "$HOME/.aws" '*' 2>/dev/null | wc -l | tr -d ' ')
-  if [[ "$hits" -gt 0 ]]; then
-    emit_finding "$MODULE" "MEDIUM" "P.6.spotlight" \
-      "Spotlight has indexed $HOME/.aws ($hits item(s))" \
-      "Spotlight queries can return AWS credential file paths. Other apps using Core Spotlight inherit this index." \
-      "Add to Spotlight Privacy: System Settings → Siri & Spotlight → Spotlight Privacy → '+' → ~/.aws. Same for ~/.ssh, ~/.gnupg, ~/.config." \
-      ""
-  fi
-  hits_ssh=$(mdfind -onlyin "$HOME/.ssh" '*' 2>/dev/null | wc -l | tr -d ' ')
-  if [[ "$hits_ssh" -gt 0 ]]; then
-    emit_finding "$MODULE" "MEDIUM" "P.6.spotlight.ssh" \
-      "Spotlight has indexed $HOME/.ssh ($hits_ssh item(s))" \
-      "" \
-      "Add ~/.ssh to Spotlight Privacy in System Settings." \
-      ""
-  fi
+# ---------- P.6: Spotlight indexing ----------
+# Hidden dot-dirs (~/.ssh, ~/.aws) are not indexed, so the old per-directory mdfind probe
+# never fired. What matters is whether the boot volume is indexed at all: credentials
+# kept in ordinary folders (~/Documents/keys.txt) are then searchable by any app.
+if has mdutil && mdutil -s / 2>/dev/null | grep -qi 'Indexing enabled'; then
+  emit_finding "$MODULE" "INFO" "P.6.spotlight" \
+    "Spotlight indexing is enabled on /" \
+    "Credential files stored outside dot-directories are searchable through Spotlight and Core Spotlight." \
+    "Keep secrets in dot-directories or a password manager. To exclude a folder: System Settings → Siri & Spotlight → Spotlight Privacy → '+'." \
+    ""
 fi
 
 # ---------- P.7: Gatekeeper / SIP ----------
@@ -204,12 +220,16 @@ if [[ -d "$HOME/Downloads" ]]; then
     if ! xattr -p com.apple.quarantine "$f" >/dev/null 2>&1; then
       recent_no_quarantine=$((recent_no_quarantine+1))
     fi
-  done < <(find "$HOME/Downloads" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*.pkg' -o -name '*.app' -o -perm -u+x \) -mtime -30 2>/dev/null | head -50)
+  # .app bundles are directories, so they need their own branch (and no descent into them).
+  done < <(find "$HOME/Downloads" -maxdepth 2 \
+             \( -type d -name '*.app' -mtime -30 -print -prune \) -o \
+             \( -type f \( -name '*.dmg' -o -name '*.pkg' -o -perm -u+x \) -mtime -30 -print \) \
+             2>/dev/null | head -50)
   if [[ "$recent_no_quarantine" -gt 0 ]]; then
     emit_finding "$MODULE" "INFO" "P.8.quarantine" \
       "$recent_no_quarantine recent executable file(s) in ~/Downloads without quarantine flag" \
       "Files without com.apple.quarantine bypassed Gatekeeper code-sign verification." \
-      "Review the list: find ~/Downloads -type f \\( -perm -u+x -o -name '*.pkg' -o -name '*.dmg' \\) -mtime -30 -exec sh -c 'xattr -p com.apple.quarantine \"$1\" >/dev/null 2>&1 || echo \"NO-QUARANTINE: $1\"' _ {} \\;" \
+      "Review the list: find ~/Downloads -maxdepth 2 \\( -name '*.app' -o -name '*.pkg' -o -name '*.dmg' -o -type f -perm -u+x \\) -mtime -30 -exec sh -c 'xattr -p com.apple.quarantine \"\$1\" >/dev/null 2>&1 || echo \"NO-QUARANTINE: \$1\"' _ {} \\;" \
       ""
   fi
 fi
