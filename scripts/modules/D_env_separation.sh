@@ -37,13 +37,17 @@ if [[ -f "$HOME/.ssh/config" ]]; then
 fi
 
 # Active workspace .env analysis — does it point to production?
+PROD_DB_RE='DATABASE_URL[^=]*=.*((^|[^A-Za-z0-9])prod(uction)?([^A-Za-z0-9]|$)|rds\.amazonaws|cloudsql|\.supabase\.co|neon\.tech)'
+# .gitignore lines that ignore .env: ".env", "/.env", "**/.env", ".env*", ".env.*", "*.env"
+ENV_IGNORE_RE='^/?(\*\*/)?\.env(\.\*|\*)?/?[[:space:]]*$|^\*\.env[[:space:]]*$'
 suspicious_envs=0
 for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -z "$f" ]] && continue
-    # Heuristic: DATABASE_URL pointing to non-localhost AND containing 'prod' OR rds.amazonaws.com
-    if grep -qE 'DATABASE_URL.*=.*(prod|rds\.amazonaws|cloudsql)' "$f" 2>/dev/null; then
+    # DATABASE_URL that names prod/production as a word or a managed cloud DB host, and is
+    # not a local URL ("products_dev" or "reproduce" are not prod).
+    if grep -E "$PROD_DB_RE" "$f" 2>/dev/null | grep -qvE 'localhost|127\.0\.0\.1|host\.docker\.internal'; then
       suspicious_envs=$((suspicious_envs+1))
       [[ $suspicious_envs -le 3 ]] && \
         emit_finding "$MODULE" "HIGH" "D.env.prod" \
@@ -63,7 +67,7 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
     if [[ -f "$repo/.env" ]]; then
-      if [[ -f "$repo/.gitignore" ]] && grep -qE '^\.?env|^\*\.env' "$repo/.gitignore" 2>/dev/null; then
+      if [[ -f "$repo/.gitignore" ]] && grep -qE "$ENV_IGNORE_RE" "$repo/.gitignore" 2>/dev/null; then
         gitignored=$((gitignored+1))
       else
         not_gitignored=$((not_gitignored+1))

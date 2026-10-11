@@ -27,6 +27,46 @@ scan_file_and_finding() {
   fi
 }
 
+# Files under <dir> matching the find predicates, newest first (one path per line).
+newest_first() {
+  local dir="$1"; shift
+  if [[ "$OS" == "macos" ]]; then
+    find "$dir" -type f "$@" -exec stat -f '%m %N' {} + 2>/dev/null
+  else
+    find "$dir" -type f "$@" -printf '%T@ %p\n' 2>/dev/null
+  fi | sort -rn | cut -d' ' -f2-
+}
+
+# Aggregated secret scan over a directory of transcripts. Scans the newest
+# SESSION_CAP files and says so when there were more.
+# scan_store <label> <finding-id> <severity> <dir> [find predicates...]
+SESSION_CAP=500
+scan_store() {
+  local label="$1" id="$2" sev="$3" dir="$4"; shift 4
+  [[ -d "$dir" ]] || return 0
+  local all=() f
+  while IFS= read -r f; do [[ -n "$f" ]] && all+=("$f"); done < <(newest_first "$dir" "$@")
+  [[ "${#all[@]}" -eq 0 ]] && return 0
+  local scan=("${all[@]:0:$SESSION_CAP}")
+  if [[ "${#all[@]}" -gt "$SESSION_CAP" ]]; then
+    emit_finding "$MODULE" "INFO" "$id.capped" \
+      "$label: scanned the newest ${#scan[@]} of ${#all[@]} files" \
+      "Older files in $dir were not checked for secrets." \
+      "Delete transcripts you no longer need, or grep the rest yourself: grep -lE '<pattern>' -r \"$dir\"." ""
+  fi
+  local cnt leaky=0
+  cnt=$(scan_classify_files_aggregated "$label" "Newest ${#scan[@]} of ${#all[@]} file(s) under $dir." "${scan[@]}")
+  [[ "${cnt:-0}" -gt 0 ]] || return 0
+  for f in "${scan[@]}"; do
+    grep -qE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null && leaky=$((leaky+1))
+  done
+  emit_finding "$MODULE" "$sev" "$id" \
+    "$label: $leaky file(s) contain $cnt distinct classified secret(s)" \
+    "Under $dir. Plaintext, readable by any process running as this user — including the next agent session. See $SECRETS_INVENTORY for the classified list." \
+    "Rotate each classified credential first. Then redact them in place with scripts/purge-secrets.sh (dry-run by default, --purge to apply). Stop pasting secrets into chat — use env vars or vault references." \
+    "Agent context windows are persistent, not ephemeral"
+}
+
 # ---------- J.1: Shell histories ----------
 scan_file_and_finding "$HOME/.bash_history"        "Bash history"          "HIGH"
 scan_file_and_finding "$HOME/.zsh_history"         "Zsh history"           "HIGH"
@@ -70,27 +110,13 @@ if [[ -d "$CC_DIR" ]]; then
       "$session_count Claude Code session file(s) on disk" \
       "Stored at $CC_DIR/projects/<encoded-project-path>/<session-id>.jsonl. Plaintext, readable by any process running as this user." "" ""
 
-    # Aggregate scan across recent sessions (cap to keep runtime sane).
-    mapfile -t recent_sessions < <(find "$CC_DIR/projects" -name '*.jsonl' -mtime -90 2>/dev/null | head -500)
-    if [[ ${#recent_sessions[@]} -gt 0 ]]; then
-      sub="Aggregated across ${#recent_sessions[@]} session file(s) modified in last 90 days."
-      cc_count=$(scan_classify_files_aggregated "Claude Code sessions (last 90d)" "$sub" "${recent_sessions[@]}")
-      if [[ "${cc_count:-0}" -gt 0 ]]; then
-        # Also emit a per-file count of leaky sessions for visibility.
-        leaky=0
-        for s in "${recent_sessions[@]}"; do
-          if grep -qE "$SECRETS_GREP_PATTERN" "$s" 2>/dev/null; then
-            leaky=$((leaky+1))
-          fi
-        done
-        emit_finding "$MODULE" "HIGH" "J.2.cc.leak" \
-          "$leaky Claude Code session file(s) (last 90d) contain $cc_count distinct classified secret(s)" \
-          "Sessions persist plaintext. Anyone reading \$HOME — including future agent runs that re-load context — sees them. See $SECRETS_INVENTORY for classification." \
-          "Rotate each classified credential first. Then redact them in place with scripts/purge-secrets.sh (dry-run by default, --purge to apply; sessions stay resumable). Stop pasting secrets into chat — use env vars or vault references." \
-          "Agent context windows are persistent, not ephemeral"
-      fi
-    fi
+    # Secrets in sessions from the last 90 days, newest first.
+    scan_store "Claude Code sessions (last 90d)" "J.2.cc.leak" "HIGH" "$CC_DIR/projects" -name '*.jsonl' -mtime -90
   fi
+
+  # Snapshots of files Claude Code edited (.env contents end up here) and shell snapshots.
+  scan_store "Claude Code file-history snapshots" "J.2.cc.filehist" "HIGH" "$CC_DIR/file-history"
+  scan_store "Claude Code shell snapshots" "J.2.cc.snapshots" "MEDIUM" "$CC_DIR/shell-snapshots"
 
   # Global prompt history file
   if [[ -f "$CC_DIR/history.jsonl" ]]; then
@@ -167,19 +193,23 @@ fi
 scan_file_and_finding "$HOME/.aider.input.history"   "Aider input history" "HIGH"
 scan_file_and_finding "$HOME/.aider.chat.history.md" "Aider chat history"  "HIGH"
 
-# Cline (VSCode extension)
-CLINE_DIRS=("$HOME/.vscode/extensions" "$HOME/Library/Application Support/Code/User/globalStorage" "$HOME/.config/Code/User/globalStorage")
-for d in "${CLINE_DIRS[@]}"; do
-  [[ -d "$d" ]] || continue
-  while IFS= read -r f; do
-    [[ -z "$f" ]] && continue
-    cnt=$(scan_classify_to_inventory "$f" "Cline state ($(basename "$f"))")
-    if [[ "${cnt:-0}" -gt 0 ]]; then
-      emit_finding "$MODULE" "MEDIUM" "J.4.cline" \
-        "$cnt classified secret(s) in Cline state: $f" \
-        "" "Inspect inventory, rotate credentials, remove file." ""
-    fi
-  done < <(find "$d" -path '*cline*' -type f -name '*.json' 2>/dev/null | head -20)
+# Codex CLI
+scan_file_and_finding "$HOME/.codex/history.jsonl" "Codex prompt history" "HIGH"
+scan_store "Codex sessions" "J.4.codex" "HIGH" "$HOME/.codex/sessions" -name '*.jsonl'
+
+# Gemini CLI chat checkpoints
+scan_store "Gemini CLI chats" "J.4.gemini" "HIGH" "$HOME/.gemini/tmp" -path '*/chats/*'
+
+# Cline (VS Code extension id saoudrizwan.claude-dev) task transcripts, in VS Code,
+# VS Code Insiders and Cursor, on Linux and macOS.
+for gs in "$HOME/.config/Code/User/globalStorage" \
+          "$HOME/.config/Code - Insiders/User/globalStorage" \
+          "$HOME/.config/Cursor/User/globalStorage" \
+          "$HOME/Library/Application Support/Code/User/globalStorage" \
+          "$HOME/Library/Application Support/Code - Insiders/User/globalStorage" \
+          "$HOME/Library/Application Support/Cursor/User/globalStorage"; do
+  scan_store "Cline tasks ($gs)" "J.4.cline" "MEDIUM" "$gs/saoudrizwan.claude-dev/tasks" \
+    \( -name 'api_conversation_history.json' -o -name 'ui_messages.json' \)
 done
 
 log "$MODULE" "done — $(wc -l < "$FINDINGS_DIR/$MODULE.jsonl" | tr -d ' ') findings"

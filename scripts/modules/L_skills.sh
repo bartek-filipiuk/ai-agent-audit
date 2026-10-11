@@ -35,21 +35,19 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
   done < <(dev_find "$p" 5 -type d -path '*/.claude/skills')
 done
 
-UTF_ZWBIDI=$'\xe2\x80[\x8b\x8c\x8d\x8e\x8f\xaa\xab\xac\xad\xae]\|\xe2\x81[\xa0\xa1\xa2\xa3\xa4]'
-
 total_skills=0
 recent_skills=0
 
 for d in "${SKILL_DIRS[@]}"; do
   [[ -d "$d" ]] || continue
 
-  # Each skill is typically a subdirectory with a SKILL.md (or plugin.json)
-  while IFS= read -r skill_dir; do
-    [[ -z "$skill_dir" ]] && continue
+  # A skill is a directory holding a SKILL.md. Enumerating every subdirectory counted
+  # plugin internals (cache/, repos/, marketplaces/) as skills and missed nested ones.
+  while IFS= read -r skill_md; do
+    [[ -z "$skill_md" ]] && continue
+    skill_dir=$(dirname "$skill_md")
     total_skills=$((total_skills+1))
     skill_name=$(basename "$skill_dir")
-    skill_md="$skill_dir/SKILL.md"
-    [[ -f "$skill_md" ]] || skill_md=$(find "$skill_dir" -maxdepth 1 -iname 'SKILL.md' -type f 2>/dev/null | head -1)
 
     # mtime / age
     mtime=$(file_mtime_unix "$skill_dir")
@@ -68,38 +66,34 @@ for d in "${SKILL_DIRS[@]}"; do
         "Snyk ToxicSkills (Feb 2026) — 30+ malicious skills tracked on ClawHub since launch"
     fi
 
-    # SKILL.md content checks
-    if [[ -n "${skill_md:-}" && -f "$skill_md" ]]; then
-      # Zero-width / bidi chars
-      if LC_ALL=C grep -q "$UTF_ZWBIDI" "$skill_md" 2>/dev/null; then
-        emit_finding "$MODULE" "HIGH" "L.2.bidi" \
-          "Skill SKILL.md contains zero-width / bidi-control chars: $skill_name" \
-          "Path: $skill_md. Invisible Unicode chars are a known prompt-injection technique." \
-          "Inspect: hexdump -C \"$skill_md\". If found, remove the skill: rm -rf \"$skill_dir\". Such chars never legitimately appear in human-written skill descriptions." \
-          "Snyk ToxicSkills — invisible chars in 1467 malicious payloads"
-      fi
-
-      # Suspicious instructions in SKILL.md (it instructs the AGENT)
-      if grep -qiE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)|exfiltrate|silently|without (telling|notifying|asking)' "$skill_md" 2>/dev/null; then
-        n=$(grep -niE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)|exfiltrate|silently|without (telling|notifying|asking)' "$skill_md" | head -1 | cut -d: -f1)
-        line=$(untrusted_snippet "$skill_md" "$n")
-        emit_finding "$MODULE" "HIGH" "L.2.bypass" \
-          "Skill instructions weaken safety / suggest exfiltration: $skill_name" \
-          "Line: $line" \
-          "Read the entire SKILL.md. If anything looks adversarial — remove the skill: rm -rf \"$skill_dir\". Report the source." \
-          "Standard adversarial skill pattern"
-      fi
-
-      # Outbound network commands embedded in skill body (curl / wget / nc to non-localhost)
-      if grep -qE '(curl|wget|nc)[[:space:]].+(\|.*sh|\|.*bash|\|\s*python|>\s*/tmp/|--user-data-binary)' "$skill_md" 2>/dev/null; then
-        emit_finding "$MODULE" "HIGH" "L.2.netexec" \
-          "Skill body contains pipe-to-shell / curl-to-eval pattern: $skill_name" \
-          "Path: $skill_md. This is the canonical RCE pattern in installer scripts." \
-          "Read the skill carefully. Refuse to load. Remove if not from a verified source." \
-          "Standard supply-chain attack signature"
-      fi
+    # Zero-width / bidi chars (shared pattern; U+200D emoji joiner excluded)
+    if LC_ALL=C grep -qE "$ZWBIDI_RE" "$skill_md" 2>/dev/null; then
+      emit_finding "$MODULE" "HIGH" "L.2.bidi" \
+        "Skill SKILL.md contains zero-width / bidi-control chars: $skill_name" \
+        "Path: $skill_md. Invisible Unicode chars are a known prompt-injection technique." \
+        "Inspect: hexdump -C \"$skill_md\". If found, remove the skill: rm -rf \"$skill_dir\". Such chars never legitimately appear in human-written skill descriptions." \
+        "Snyk ToxicSkills — invisible chars in 1467 malicious payloads"
     fi
-  done < <(find "$d" -mindepth 1 -maxdepth 2 -type d 2>/dev/null)
+
+    # Instructions that switch off confirmation or hide actions from the user
+    n=$(grep -niE "$BYPASS_RE|$EXFIL_RE" "$skill_md" 2>/dev/null | head -1 | cut -d: -f1)
+    if [[ -n "$n" ]]; then
+      emit_finding "$MODULE" "HIGH" "L.2.bypass" \
+        "Skill instructions weaken safety / suggest exfiltration: $skill_name" \
+        "Line: $(untrusted_snippet "$skill_md" "$n")" \
+        "Read the entire SKILL.md. If anything looks adversarial — remove the skill: rm -rf \"$skill_dir\". Report the source." \
+        "Standard adversarial skill pattern"
+    fi
+
+    # Download piped into a shell / interpreter
+    if grep -qE "$NETEXEC_RE" "$skill_md" 2>/dev/null; then
+      emit_finding "$MODULE" "HIGH" "L.2.netexec" \
+        "Skill body contains pipe-to-shell / curl-to-eval pattern: $skill_name" \
+        "Path: $skill_md. This is the canonical RCE pattern in installer scripts." \
+        "Read the skill carefully. Refuse to load. Remove if not from a verified source." \
+        "Standard supply-chain attack signature"
+    fi
+  done < <(find "$d" -name 'SKILL.md' -type f -not -path '*/node_modules/*' 2>/dev/null)
 done
 
 # Summary

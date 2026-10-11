@@ -22,6 +22,7 @@ GLOBAL_AGENT_SETTINGS=(
   "$HOME/.claude/settings.json"
   "$HOME/.claude/settings.local.json"
   "/etc/claude-code/managed-settings.json"
+  "$HOME/.gemini/settings.json"
 )
 for s in "${GLOBAL_AGENT_SETTINGS[@]}"; do
   [[ -f "$s" ]] || continue
@@ -38,6 +39,22 @@ for s in "${GLOBAL_AGENT_SETTINGS[@]}"; do
   fi
 done
 
+# Hooks shipped by installed Claude Code plugins. Aggregated into one finding: they come
+# from plugins you chose to install, and one HIGH per plugin would drown the report.
+plugin_hooks=()
+if [[ -d "$HOME/.claude/plugins" ]]; then
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && plugin_hooks+=("$f")
+  done < <(find "$HOME/.claude/plugins" -path '*/hooks/hooks.json' -not -path '*/node_modules/*' 2>/dev/null)
+fi
+if [[ "${#plugin_hooks[@]}" -gt 0 ]]; then
+  emit_finding "$MODULE" "MEDIUM" "K.1.plugin.hooks" \
+    "${#plugin_hooks[@]} installed plugin hook file(s) run commands on agent events" \
+    "First files:"$'\n'"$(printf '%s\n' "${plugin_hooks[@]}" | head -10)" \
+    "Plugin hooks run with your privileges on every matching event. Review each: jq . <file>. Uninstall plugins you do not use (/plugin in Claude Code), and prefer plugins from sources you trust." \
+    "CVE-2025-59536 / CVE-2026-21852 — hooks abused for RCE"
+fi
+
 # ---------- K.2: Repo-level AI config files in workspace ----------
 # These files are auto-loaded when an agent runs in the directory. Treat untrusted repos
 # (anything cloned recently, anything with foreign remote.origin.url) as suspect.
@@ -52,7 +69,9 @@ declare -a REPO_CFG_GLOBS=(
   ".cursorrules"
   ".clinerules"
   "AGENTS.md"
+  "GEMINI.md"
   ".windsurfrules"
+  ".github/copilot-instructions.md"
 )
 
 repo_cfg_total=0
@@ -125,56 +144,64 @@ if [[ "$repo_cfg_total" -gt 0 ]]; then
 fi
 
 # ---------- K.3: Prompt-injection patterns in agent rules files ----------
-# Detection runs on CLAUDE.md, AGENTS.md, .cursorrules, .clinerules, .windsurfrules.
+# Rules files, plus repo-level agent and command definitions (.claude/agents/*.md,
+# .claude/commands/*.md), which are loaded into the agent's context the same way.
 inj_files=()
 for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -n "$f" ]] && inj_files+=("$f")
   done < <(dev_find "$p" 5 -type f \
-    \( -name 'CLAUDE.md' -o -name '.cursorrules' -o -name '.clinerules' -o -name 'AGENTS.md' -o -name '.windsurfrules' \))
+    \( -name 'CLAUDE.md' -o -name 'GEMINI.md' -o -name 'AGENTS.md' -o -name '.cursorrules' \
+       -o -name '.clinerules' -o -name '.windsurfrules' -o -name 'copilot-instructions.md' \
+       -o -path '*/.claude/agents/*.md' -o -path '*/.claude/commands/*.md' \))
 done
 
 # Also inspect global rules locations
-[[ -f "$HOME/.claude/CLAUDE.md" ]] && inj_files+=("$HOME/.claude/CLAUDE.md")
-[[ -f "$HOME/CLAUDE.md" ]] && inj_files+=("$HOME/CLAUDE.md")
-
-# UTF-8 byte sequences for zero-width / bidi-control chars (avoids dependency on grep -P).
-# U+200B–200F: e2 80 8b–8f ; U+202A–202E: e2 80 aa–ae ; U+2060–2064: e2 81 a0–a4
-ZWBIDI_GREP=$'\xe2\x80[\x8b\x8c\x8d\x8e\x8f\xaa\xab\xac\xad\xae]\|\xe2\x81[\xa0\xa1\xa2\xa3\xa4]'
+for f in "$HOME/.claude/CLAUDE.md" "$HOME/CLAUDE.md" "$HOME/.gemini/GEMINI.md" "$HOME/.codex/AGENTS.md"; do
+  [[ -f "$f" ]] && inj_files+=("$f")
+done
 
 for f in "${inj_files[@]}"; do
   [[ -r "$f" ]] || continue
 
-  # Zero-width / bidi-control chars
-  if LC_ALL=C grep -q "$ZWBIDI_GREP" "$f" 2>/dev/null; then
+  # Zero-width / bidi-control chars (pattern in common.sh; U+200D emoji joiner excluded)
+  if LC_ALL=C grep -qE "$ZWBIDI_RE" "$f" 2>/dev/null; then
     emit_finding "$MODULE" "HIGH" "K.3.bidi" \
       "Zero-width / bidi-control chars in agent rules: $f" \
       "Invisible Unicode chars are a known prompt-injection technique — humans don't see the hidden instructions, the agent does." \
-      "Inspect bytes: hexdump -C \"$f\" | grep -E 'e2 80 (8b|8c|8d|8e|8f|aa|ab|ac|ad|ae)|e2 81 a[0-4]'. Strip with: perl -CSD -i -pe 's/[\\x{200B}-\\x{200F}\\x{202A}-\\x{202E}\\x{2060}-\\x{2064}]//g' \"$f\"" \
+      "Inspect bytes: hexdump -C \"$f\" | grep -E 'e2 80 (8b|8c|8e|8f|aa|ab|ac|ad|ae)|e2 81 (a[0-4]|a[6-9])'. Strip with: perl -CSD -i -pe 's/[\\x{200B}\\x{200C}\\x{200E}\\x{200F}\\x{202A}-\\x{202E}\\x{2060}-\\x{2064}\\x{2066}-\\x{2069}]//g' \"$f\"" \
       "Snyk ToxicSkills (Feb 2026) — invisible chars used in 1467 malicious skill payloads on ClawHub"
   fi
 
   # Classic injection language
-  if grep -qiE 'ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now [a-z]+' "$f" 2>/dev/null; then
-    n=$(grep -niE 'ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now [a-z]+' "$f" | head -1 | cut -d: -f1)
-    line=$(untrusted_snippet "$f" "$n")
+  n=$(grep -niE "$INJECTION_RE" "$f" 2>/dev/null | head -1 | cut -d: -f1)
+  if [[ -n "$n" ]]; then
     emit_finding "$MODULE" "MEDIUM" "K.3.injection" \
       "Prompt-injection text in agent rules: $f" \
-      "Line: $line" \
+      "Line: $(untrusted_snippet "$f" "$n")" \
       "Review whether this is intentional. Injection-style language in rules conditions the agent to follow override patterns even when source is untrusted. Remove or rewrite as positive instruction." \
       "Standard prompt-injection signature"
   fi
 
-  # "Skip / bypass safety" patterns
-  if grep -qiE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)' "$f" 2>/dev/null; then
-    n=$(grep -niE '(skip|bypass|disable|ignore|never).*(confirmation|approval|safety|permission prompt|user prompt|review)' "$f" | head -1 | cut -d: -f1)
-    line=$(untrusted_snippet "$f" "$n")
+  # "Skip / bypass safety" instructions
+  n=$(grep -niE "$BYPASS_RE" "$f" 2>/dev/null | head -1 | cut -d: -f1)
+  if [[ -n "$n" ]]; then
     emit_finding "$MODULE" "HIGH" "K.3.bypass" \
       "Rules file weakens agent safety: $f" \
-      "Line: $line" \
+      "Line: $(untrusted_snippet "$f" "$n")" \
       "Review and remove instructions that bypass confirmations. The agent should always require approval for destructive ops, regardless of what rules say." \
       "Replit / Gemini / PocketOS — every documented incident involved bypass-style instructions in rules"
+  fi
+
+  # Rules File Backdoor: instructions hidden in HTML comments (invisible in rendered Markdown)
+  n=$(grep -nE '<!--' "$f" 2>/dev/null | grep -iE "$INJECTION_RE|$BYPASS_RE|$NETEXEC_RE|$EXFIL_RE" | head -1 | cut -d: -f1)
+  if [[ -n "$n" ]]; then
+    emit_finding "$MODULE" "HIGH" "K.3.hidden" \
+      "Instructions hidden in an HTML comment in agent rules: $f" \
+      "Line: $(untrusted_snippet "$f" "$n")" \
+      "HTML comments do not render in Markdown previews but reach the agent verbatim. Remove the comment and review who added it (git log -p -- \"$f\")." \
+      "Rules File Backdoor (Pillar Security, 2025) — hidden instructions in rules files"
   fi
 done
 

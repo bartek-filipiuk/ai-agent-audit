@@ -184,6 +184,22 @@ ssh_key_has_passphrase() {
   return 2
 }
 
+# --- Shared detection patterns (ERE; tests/test_patterns.sh exercises these variables) ---
+# Classic prompt-injection phrasing in agent rules files (match case-insensitively).
+INJECTION_RE='ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now (a|an|the) '
+# Instructions that switch off human confirmation. Bounded: "never skip code review" is fine.
+BYPASS_RE='(skip|bypass|disable)[[:space:]]+(the[[:space:]]+|all[[:space:]]+|any[[:space:]]+)?(user[[:space:]]+)?(confirmations?|approvals?|permission( prompts?|s)?|safety( checks?| prompts?)?)'
+# Exfiltration / covert-action wording in skills.
+EXFIL_RE='exfiltrat|without (telling|notifying|asking)( the user)?'
+# Download piped into a shell or interpreter, or dropped into /tmp.
+NETEXEC_RE='(curl|wget|nc)[[:space:]][^|]*\|[[:space:]]*(sudo[[:space:]]+)?((ba|z|da)?sh|python3?)([[:space:];]|$)|(curl|wget)[[:space:]].*>[[:space:]]*/tmp/'
+# Zero-width / bidi-control characters as UTF-8 bytes (use with LC_ALL=C grep -E):
+# U+200B ZWSP, U+200C ZWNJ, U+200E/F LRM/RLM, U+202A–202E embeddings/overrides,
+# U+2060–2064 word joiner/invisible operators, U+2066–2069 isolates. U+200D (ZWJ) is left
+# out on purpose: every compound emoji contains it.
+ZWBIDI_RE=$'\xe2\x80[\x8b\x8c\x8e\x8f\xaa\xab\xac\xad\xae]|\xe2\x81[\xa0\xa1\xa2\xa3\xa4\xa6\xa7\xa8\xa9]'
+export INJECTION_RE BYPASS_RE EXFIL_RE NETEXEC_RE ZWBIDI_RE
+
 # --- Claude Code settings risk flags ---
 # Prints space-separated flags for risky settings in a Claude Code settings file
 # (current schema: permissions.allow / permissions.defaultMode, env, hooks):

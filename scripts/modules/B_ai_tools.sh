@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Module B: AI tools configuration audit
-# Detects installed AI CLI tools, dangerous flags, MCP server configs, plaintext secrets in MCP json.
+# Detects installed AI CLI tools, permission-bypass aliases and env vars, MCP config hygiene,
+# and risky Claude Code settings.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,46 +99,9 @@ for cfg in "${MCP_CONFIGS[@]}"; do
   fi
 done
 
-# ---------- B.4: Project rules files ----------
-# CLAUDE.md, .cursorrules, .clinerules, AGENTS.md — anywhere in workspace
-RULE_PATHS=()
-for p in "${DEV_SEARCH_PATHS[@]}"; do
-  [[ -d "$p" ]] || continue
-  while IFS= read -r f; do
-    [[ -n "$f" ]] && RULE_PATHS+=("$f")
-  done < <(dev_find "$p" 4 -type f \( -name 'CLAUDE.md' -o -name '.cursorrules' -o -name '.clinerules' -o -name 'AGENTS.md' \))
-done
-
-if [[ ${#RULE_PATHS[@]} -gt 0 ]]; then
-  emit_finding "$MODULE" "INFO" "B.4.rules" \
-    "${#RULE_PATHS[@]} agent rules file(s) in workspace" \
-    "These files inject instructions into agent context. Atakers can use them as injection vector." "" ""
-
-  # Check each for dangerous patterns
-  for f in "${RULE_PATHS[@]}"; do
-    # Look for instructions that might disable safety
-    if grep -qiE '(skip|bypass|ignore|disable).*(confirmation|approval|safety|permission|prompt)' "$f" 2>/dev/null; then
-      emit_finding "$MODULE" "HIGH" "B.4.danger" \
-        "Rules file weakens agent safety: $f" \
-        "Contains instructions that may disable safety prompts." \
-        "Review and remove instructions that bypass confirmations. Agent should always require approval for destructive ops." \
-        "Replit / Gemini / PocketOS — every documented incident violated 'don't do destructive ops without approval' rule"
-    fi
-  done
-fi
-
-# ---------- B.5: Cursor settings.json — auto-approve ----------
-CURSOR_SETTINGS=("$HOME/Library/Application Support/Cursor/User/settings.json" "$HOME/.config/Cursor/User/settings.json")
-for s in "${CURSOR_SETTINGS[@]}"; do
-  [[ -f "$s" ]] || continue
-  if grep -qE '"cursor\.(allowPrompt|autoApprove|alwaysAllow)"\s*:\s*true' "$s" 2>/dev/null; then
-    emit_finding "$MODULE" "HIGH" "B.5.autoapprove" \
-      "Cursor auto-approve enabled: $s" \
-      "Tool calls execute without human review." \
-      "Disable in settings.json: set cursor.autoApprove and similar to false. Use Plan Mode for review." \
-      "Cursor's own December 2025 disclosure of Plan Mode enforcement bug"
-  fi
-done
+# Rules files (CLAUDE.md, .cursorrules, AGENTS.md, ...) are checked by module K (K.2, K.3).
+# Cursor auto-run state lives in its SQLite state DB, not settings.json; the old
+# settings.json keys this module grepped for do not exist.
 
 # ---------- B.6: Claude Code settings ----------
 CC_SETTINGS=("$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "/etc/claude-code/managed-settings.json")

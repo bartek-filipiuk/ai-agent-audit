@@ -27,16 +27,25 @@ MCP_CONFIGS=(
   "$HOME/.claude/.mcp.json"
   "$HOME/.claude.json"
   "$HOME/.codeium/windsurf/mcp_config.json"
-  "$HOME/.config/Cline/MCP/cline_mcp_settings.json"
-  "$HOME/Library/Application Support/Cline/MCP/cline_mcp_settings.json"
+  "$HOME/.gemini/settings.json"
+  "$HOME/.codex/config.toml"
 )
+# Cline (VS Code extension id saoudrizwan.claude-dev) in VS Code, Insiders and Cursor.
+for gs in "$HOME/.config/Code/User/globalStorage" \
+          "$HOME/.config/Code - Insiders/User/globalStorage" \
+          "$HOME/.config/Cursor/User/globalStorage" \
+          "$HOME/Library/Application Support/Code/User/globalStorage" \
+          "$HOME/Library/Application Support/Code - Insiders/User/globalStorage" \
+          "$HOME/Library/Application Support/Cursor/User/globalStorage"; do
+  MCP_CONFIGS+=("$gs/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")
+done
 
-# Add per-project .mcp.json found in workspace
+# Add per-project MCP configs found in workspace (Claude Code .mcp.json, Cursor, VS Code)
 for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -n "$f" ]] && MCP_CONFIGS+=("$f")
-  done < <(dev_find "$p" 5 -name '.mcp.json')
+  done < <(dev_find "$p" 5 \( -name '.mcp.json' -o -path '*/.cursor/mcp.json' -o -path '*/.vscode/mcp.json' \))
 done
 
 total_servers=0
@@ -54,7 +63,28 @@ for cfg in "${MCP_CONFIGS[@]}"; do
   # Two extraction paths: jq (preferred) or a grep heuristic fallback.
   srv_scope=(); srv_names=(); srv_type=(); srv_cmd=(); srv_args=(); srv_url=()
 
-  if [[ "$HAS_JQ" -eq 1 ]]; then
+  if [[ "$cfg" == *.toml ]]; then
+    # Codex: [mcp_servers.<name>] tables with command / args / url keys. Nested tables
+    # such as [mcp_servers.<name>.tools.<tool>] are not servers.
+    while IFS=$'\x1f' read -r scope name type cmd args url; do
+      [[ -z "$name" ]] && continue
+      srv_scope+=("$scope"); srv_names+=("$name"); srv_type+=("$type")
+      srv_cmd+=("$cmd"); srv_args+=("$args"); srv_url+=("$url")
+    done < <(awk '
+      function flush() { if (name != "") printf "%s\037%s\037%s\037%s\037%s\037%s\n", "", name, "", cmd, args, url }
+      /^\[/ {
+        flush(); name = ""; cmd = ""; args = ""; url = ""
+        if (match($0, /^\[mcp_servers\.[^].]+\][[:space:]]*$/)) {
+          name = $0; sub(/^\[mcp_servers\./, "", name); sub(/\][[:space:]]*$/, "", name); gsub(/"/, "", name)
+        }
+        next
+      }
+      name != "" && /^[[:space:]]*command[[:space:]]*=/ { v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); gsub(/"/, "", v); cmd = v }
+      name != "" && /^[[:space:]]*url[[:space:]]*=/     { v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); gsub(/"/, "", v); url = v }
+      name != "" && /^[[:space:]]*args[[:space:]]*=/    { v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); gsub(/[]["]/, "", v); gsub(/,[[:space:]]*/, " ", v); args = v }
+      END { flush() }
+    ' "$cfg" 2>/dev/null)
+  elif [[ "$HAS_JQ" -eq 1 ]]; then
     # Top-level "mcpServers" (Claude Desktop / user scope in ~/.claude.json) or "servers"
     # (VS Code), plus per-project servers that ~/.claude.json keeps under .projects[path].
     # Fields are joined with \x1f, not tabs: tab is IFS whitespace, so an empty first

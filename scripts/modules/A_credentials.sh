@@ -104,7 +104,15 @@ done
 
 # Kubernetes
 if [[ -f "$HOME/.kube/config" ]]; then
-  ctx_count=$(grep -cE '^\s*name:' "$HOME/.kube/config" 2>/dev/null) || ctx_count=0
+  # Count contexts, not every "name:" line (clusters and users have names too).
+  ctx_count=0
+  if has kubectl; then
+    ctx_count=$(KUBECONFIG="$HOME/.kube/config" kubectl config get-contexts -o name 2>/dev/null | grep -c .) || ctx_count=0
+  fi
+  if [[ "$ctx_count" -eq 0 ]]; then   # no kubectl, or it failed: count the contexts: block
+    ctx_count=$(awk '/^contexts:/ {in_ctx = 1; next} /^[^[:space:]-]/ {in_ctx = 0}
+                     in_ctx && /^[[:space:]]*-?[[:space:]]*name:/ {n++} END {print n + 0}' "$HOME/.kube/config" 2>/dev/null) || ctx_count=0
+  fi
   emit_finding "$MODULE" "MEDIUM" "A.2.k8s" \
     "Kubernetes config present (~/.kube/config) with $ctx_count context entries" \
     "kubectl bound to whatever clusters are listed. Agent with shell access can run kubectl against any of them." \
@@ -156,6 +164,36 @@ if [[ -f "$HOME/.config/gh/hosts.yml" ]]; then
       "GitHub MCP cross-repo data leak (Invariant Labs, May 2025); Nx s1ngularity used gh tokens"
   fi
 fi
+
+# GitLab CLI
+if [[ -f "$HOME/.config/glab-cli/config.yml" ]] && grep -qE '^[[:space:]]*token:[[:space:]]*[^[:space:]]' "$HOME/.config/glab-cli/config.yml" 2>/dev/null; then
+  emit_finding "$MODULE" "HIGH" "A.4.glab" \
+    "GitLab CLI token stored at ~/.config/glab-cli/config.yml" \
+    "Personal access token in plaintext; grants glab (and any process as this user) API access to your GitLab projects." \
+    "Check scopes in GitLab → Preferences → Access Tokens. Use a token with the minimum scopes and an expiry, or glab auth login with the keyring." \
+    ""
+fi
+
+# Other plaintext credential files read by common CLIs
+if [[ -f "$HOME/.netrc" ]] && grep -qE '(^|[[:space:]])password[[:space:]]+[^[:space:]]' "$HOME/.netrc" 2>/dev/null; then
+  emit_finding "$MODULE" "HIGH" "A.4.netrc" \
+    "~/.netrc holds plaintext passwords" \
+    "curl, git, ftp and pip read it automatically; any process as this user can too." \
+    "Move the credentials to a keychain or credential helper and delete the password lines. If they are API tokens, rotate them." \
+    ""
+fi
+[[ -f "$HOME/.pgpass" ]] && emit_finding "$MODULE" "MEDIUM" "A.4.pgpass" \
+  "~/.pgpass holds PostgreSQL passwords" \
+  "psql and libpq clients connect without prompting to every host listed." \
+  "Remove entries for production hosts; use short-lived credentials (IAM auth, Vault) for prod databases." ""
+[[ -f "$HOME/.terraform.d/credentials.tfrc.json" ]] && emit_finding "$MODULE" "HIGH" "A.4.terraform" \
+  "Terraform Cloud / HCP token in ~/.terraform.d/credentials.tfrc.json" \
+  "The token can plan and apply infrastructure changes in your Terraform Cloud organisations." \
+  "Revoke unused tokens in Terraform Cloud → User settings → Tokens; prefer team tokens scoped to one workspace." ""
+[[ -f "$HOME/.vault-token" ]] && emit_finding "$MODULE" "HIGH" "A.4.vault" \
+  "HashiCorp Vault token in ~/.vault-token" \
+  "Any process as this user can read every secret this token's policies allow." \
+  "vault token revoke -self when done, and use short TTLs (vault login -ttl=1h)." ""
 
 # git-credentials (plaintext URLs with passwords)
 if [[ -f "$HOME/.git-credentials" ]]; then
