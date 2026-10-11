@@ -45,10 +45,14 @@ stub_cmd() {
 
 # fake_secret <prefix> <length> <tr charset> — random token built at test time so no
 # real-looking credential is ever committed to the repository.
+# Reads a finite chunk first: "tr < /dev/urandom | head" relies on SIGPIPE to stop tr, and on
+# the macOS CI runner tr kept reading forever, hanging every test that used this helper.
 fake_secret() {
-  local rand
-  rand=$(LC_ALL=C tr -dc "$3" < /dev/urandom | head -c "$2")
-  printf '%s%s' "$1" "$rand"
+  local rand=""
+  while (( ${#rand} < $2 )); do
+    rand+=$(head -c 4096 /dev/urandom | LC_ALL=C tr -dc "$3")
+  done
+  printf '%s%s' "$1" "${rand:0:$2}"
 }
 
 # run_audit [args...] — runs the orchestrator quietly, output under $OUT.
