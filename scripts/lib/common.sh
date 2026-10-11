@@ -6,7 +6,10 @@
 AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
 FINDINGS_DIR="$AUDIT_DIR/findings"
 export AUDIT_DIR FINDINGS_DIR
+# Reports hold paths and fingerprints; other local users have no business reading them.
+umask 077
 mkdir -p "$FINDINGS_DIR"
+chmod 700 "$AUDIT_DIR" 2>/dev/null
 
 # --- OS detection ---
 case "$(uname -s)" in

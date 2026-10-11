@@ -15,6 +15,24 @@
 # Inventory file used by scan_classify_to_inventory.
 SECRETS_INVENTORY="${SECRETS_INVENTORY:-${AUDIT_DIR:-$HOME/.ai-agent-audit}/secrets-inventory.md}"
 
+# Raw secret matches never go to the shared /tmp. Each process gets a private directory
+# under $AUDIT_DIR/tmp (mode 700), and the whole directory is removed on exit or
+# interrupt. A directory rather than a list of files, because most temp files are
+# created inside $(...) subshells whose variables and traps the parent never sees.
+if [[ -z "${_SECRETS_TMPDIR:-}" || ! -d "${_SECRETS_TMPDIR:-}" ]]; then
+  (umask 077; mkdir -p "${AUDIT_DIR:-$HOME/.ai-agent-audit}/tmp")
+  _SECRETS_TMPDIR=$(mktemp -d "${AUDIT_DIR:-$HOME/.ai-agent-audit}/tmp/run.XXXXXX")
+  _secrets_cleanup() { rm -rf "$_SECRETS_TMPDIR"; rmdir "$(dirname "$_SECRETS_TMPDIR")" 2>/dev/null; }
+  # Do not clobber a caller's EXIT trap (test harness, embedding scripts); the caller
+  # then owns cleanup of the output directory.
+  if [[ -z "$(trap -p EXIT)" ]]; then
+    trap '_secrets_cleanup' EXIT
+    trap '_secrets_cleanup; exit 130' INT TERM
+  fi
+fi
+
+_secrets_mktemp() { mktemp "$_SECRETS_TMPDIR/s.XXXXXX"; }
+
 # Each entry: ERE-pattern|||human-readable type|||service / where it's used|||where to rotate|||severity hint
 # Severity hints are advisory; the calling module decides actual severity for the finding.
 # Order matters: more specific patterns must come before generic ones (e.g. sk-ant- before sk-).
@@ -174,7 +192,7 @@ scan_classify_to_inventory() {
 
   # Collect unique matches per pattern. Use a tmp file to keep them out of any global
   # variable that might accidentally be exported.
-  local tmp; tmp=$(mktemp)
+  local tmp; tmp=$(_secrets_mktemp)
   local total=0
 
   local entry pat type_label service rotate sev rest matches match fp
@@ -226,7 +244,7 @@ scan_classify_to_inventory() {
 # Args: <human_label>
 scan_classify_stdin_to_inventory() {
   local label="$1"
-  local tmp_in; tmp_in=$(mktemp)
+  local tmp_in; tmp_in=$(_secrets_mktemp)
   cat > "$tmp_in"
   scan_classify_to_inventory "$tmp_in" "$label"
   rm -f "$tmp_in"
@@ -238,7 +256,7 @@ scan_classify_stdin_to_inventory() {
 scan_classify_files_aggregated() {
   local label="$1" subtitle="$2"; shift 2
   local files=("$@")
-  local merged; merged=$(mktemp)
+  local merged; merged=$(_secrets_mktemp)
 
   local f
   for f in "${files[@]}"; do
@@ -255,7 +273,7 @@ scan_classify_files_aggregated() {
   ensure_secrets_inventory_header
 
   local total=0
-  local tmp_table; tmp_table=$(mktemp)
+  local tmp_table; tmp_table=$(_secrets_mktemp)
 
   local entry pat type_label service rotate sev rest matches match fp
   for entry in "${SECRET_PATTERNS[@]}"; do
@@ -298,7 +316,7 @@ scan_classify_files_aggregated() {
   printf '%s' "$total"
 }
 
-export -f _fp_sanitize redact_fingerprint redact_secrets_in_text classify_secret_match \
+export -f _secrets_mktemp _fp_sanitize redact_fingerprint redact_secrets_in_text classify_secret_match \
           ensure_secrets_inventory_header \
           scan_classify_to_inventory scan_classify_stdin_to_inventory \
           scan_classify_files_aggregated

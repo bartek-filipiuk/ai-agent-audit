@@ -127,6 +127,10 @@ export MODULES_RUN
 # Aggregate
 bash "$SCRIPT_DIR/aggregate.sh"
 
+# Files from older runs keep their old mode when truncated with '>'; tighten everything.
+chmod -R go-rwx "$AUDIT_DIR" 2>/dev/null
+rm -rf "$AUDIT_DIR/tmp"
+
 echo
 echo "═══════════════════════════════════════════════════════════"
 echo "  Audit complete."
