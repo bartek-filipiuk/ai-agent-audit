@@ -36,6 +36,10 @@ Usage: $0 [--modules A,B,G] [--skip-sessions] [--output ~/.ai-agent-audit] [--no
   --skip-sessions  Leave out module J, which reads shell history and AI session
                    transcripts (the most invasive part of the audit).
 
+Environment:
+  AUDIT_DEV_PATHS      Colon-separated project roots to scan instead of the derived ones.
+  AUDIT_MODULE_TIMEOUT Seconds after which a module is stopped (needs timeout/gtimeout).
+
 Modules:
   A  Credentials (SSH, cloud, package managers, env files)
   B  AI tool configuration (CLIs, MCP, dangerous flags)
@@ -134,6 +138,15 @@ emit_finding X INFO X.roots \
   "Roots ${roots_src}.${roots_note}"$'\n'"${roots_list}" \
   "To scan other directories: AUDIT_DEV_PATHS=/path/one:/path/two bash scripts/run-audit.sh" ""
 
+# Optional per-module time limit (seconds), so a tool that blocks (a keychain prompt, a
+# hung network mount) cannot stall the whole audit. Needs timeout or gtimeout.
+MODULE_TIMEOUT="${AUDIT_MODULE_TIMEOUT:-}"
+TIMEOUT_BIN=""
+if [[ -n "$MODULE_TIMEOUT" ]]; then
+  TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
+  [[ -z "$TIMEOUT_BIN" ]] && warn "AUDIT_MODULE_TIMEOUT set but no timeout/gtimeout found — running without a limit"
+fi
+
 # Run each requested module
 MODULES_RUN=""
 for m in $MODULES_TO_RUN; do
@@ -148,7 +161,16 @@ for m in $MODULES_TO_RUN; do
     continue
   fi
   MODULES_RUN="${MODULES_RUN:+$MODULES_RUN }$m"
-  "$BASH" "$script_path" || warn "Module $m exited with non-zero"
+  if [[ -n "$TIMEOUT_BIN" ]]; then
+    "$TIMEOUT_BIN" "$MODULE_TIMEOUT" "$BASH" "$script_path"; rc=$?
+  else
+    "$BASH" "$script_path"; rc=$?
+  fi
+  if [[ "$rc" -eq 124 ]]; then
+    warn "Module $m timed out after ${MODULE_TIMEOUT}s — its findings are incomplete"
+  elif [[ "$rc" -ne 0 ]]; then
+    warn "Module $m exited with non-zero"
+  fi
 done
 export MODULES_RUN
 

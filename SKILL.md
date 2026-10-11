@@ -115,7 +115,7 @@ Do NOT run remediation or `--purge` without explicit user confirmation per item 
 ## Files in this skill
 
 - `SKILL.md` — this file
-- `scripts/run-audit.sh` — orchestrator (`--modules`, `--skip-sessions`, `--output`, `--no-open`)
+- `scripts/run-audit.sh` — orchestrator (`--modules`, `--skip-sessions`, `--output`, `--no-open`; env `AUDIT_DEV_PATHS`, `AUDIT_MODULE_TIMEOUT`)
 - `scripts/aggregate.sh` — builds the JSON / Markdown / HTML reports and the action plan
 - `scripts/purge-secrets.sh` — redacts detected credentials in history and transcripts (dry-run by default)
 - `scripts/modules/*.sh` — one script per module (A–N, P)

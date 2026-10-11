@@ -52,8 +52,11 @@ fake_secret() {
 }
 
 # run_audit [args...] — runs the orchestrator quietly, output under $OUT.
+# Modules get a time limit so a hang shows up as a named failure instead of a stuck run.
 run_audit() {
-  bash "$SCRIPTS/run-audit.sh" --no-open --output "$OUT" "$@" >"$T/run.log" 2>&1
+  AUDIT_MODULE_TIMEOUT="${AUDIT_MODULE_TIMEOUT:-120}" \
+    bash "$SCRIPTS/run-audit.sh" --no-open --output "$OUT" "$@" >"$T/run.log" 2>&1
+  grep -E 'timed out|exited with non-zero' "$T/run.log" | sed 's/^/    run-audit: /' || true
 }
 
 _ok()   { _PASS=$((_PASS+1)); }

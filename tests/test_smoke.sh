@@ -23,4 +23,12 @@ if command -v jq >/dev/null 2>&1; then
 fi
 assert_grep 'Partial run' "$T/run.log"
 
+# A module that blocks is stopped by AUDIT_MODULE_TIMEOUT and named in the output.
+stub_cmd id 'sleep 30'
+start=$(date +%s)
+AUDIT_MODULE_TIMEOUT=2 run_audit --modules F >/dev/null
+assert_grep 'Module F timed out after 2s' "$T/run.log"
+assert_true "run continued after the timeout" test $(( $(date +%s) - start )) -lt 20
+rm -f "$T/stubs/id"
+
 report

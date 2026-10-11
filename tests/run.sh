@@ -3,10 +3,12 @@
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
+# Per-file limit, when a timeout binary exists, so one hung test cannot stall CI.
+to=$(command -v timeout || command -v gtimeout || true)
 failed=()
 for t in test_*.sh; do
   printf '%s\n' "$t"
-  if bash "$t"; then
+  if ${to:+"$to" 900} bash "$t"; then
     printf '  PASS\n'
   else
     printf '  FAIL\n'
