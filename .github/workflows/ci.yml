@@ -21,7 +21,7 @@ jobs:
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
         # Stock /bin/bash on macOS is 3.2; the audit requires bash >= 4.
-        run: brew install bash jq shellcheck
+        run: brew install bash jq shellcheck coreutils
 
       - name: shellcheck
         run: shellcheck -S warning scripts/*.sh scripts/lib/*.sh scripts/modules/*.sh tests/*.sh

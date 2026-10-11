@@ -163,7 +163,7 @@ AUDIT_DEV_PATHS="$HOME/work:$HOME/clients" bash scripts/run-audit.sh
 | ID | Domain | Key checks |
 |----|--------|------------|
 | **A** | Credentials | SSH keys (passphrase, perms, ssh-agent loaded), AWS / GCP / Azure / Kubernetes contexts, npm / cargo / pypi / docker tokens, GitHub and GitLab CLI tokens, `git-credentials`, `~/.netrc`, `~/.pgpass`, Terraform Cloud and Vault tokens, `.env` files in project roots, GPG, crypto wallets |
-| **B** | AI tool config | Installed AI CLIs, permission-bypass aliases and env vars in shell init (`--yolo`, `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`, `--full-auto`, ...), MCP config permissions and `npx` use, Claude Code settings (`permissions.defaultMode: bypassPermissions`, `Bash` allow-all, `enableAllProjectMcpServers`, custom `ANTHROPIC_BASE_URL`) |
+| **B** | AI tool config | Installed AI CLIs, permission-bypass aliases and env vars in shell init (`--yolo`, `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`, `--full-auto`, ...), Claude Code settings (`permissions.defaultMode: bypassPermissions`, `Bash` allow-all, `enableAllProjectMcpServers`, custom `ANTHROPIC_BASE_URL`) |
 | **C** | Token scope | GitHub token type (classic PAT vs fine-grained), AWS SSO vs long-lived keys, npm token count |
 | **D** | Environment separation | Distinct AWS profiles, SSH host aliases, production `DATABASE_URL` in a dev project, `.env` covered by `.gitignore` |
 | **E** | Backup hygiene | Backup tool presence (`restic`, `borg`, an active Time Machine), git remote diversity (read from `.git/config`) |

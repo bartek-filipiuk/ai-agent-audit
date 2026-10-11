@@ -40,6 +40,10 @@ for gs in "$HOME/.config/Code/User/globalStorage" \
   MCP_CONFIGS+=("$gs/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")
 done
 
+# Configs above live in $HOME and are the user's own; configs below come from project
+# checkouts, possibly cloned from strangers, and are treated as untrusted text.
+N_HOME_CONFIGS=${#MCP_CONFIGS[@]}
+
 # Add per-project MCP configs found in workspace (Claude Code .mcp.json, Cursor, VS Code)
 for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
@@ -54,13 +58,30 @@ total_uvx=0
 total_pinned=0
 total_remote=0
 
-for cfg in "${MCP_CONFIGS[@]}"; do
+# Text from a config for display: repo-level configs are labelled and truncated as untrusted;
+# home-level ones are only stripped of control characters and truncated.
+show() {  # show <text> <max>
+  if [[ "$repo_cfg" -eq 1 ]]; then
+    untrusted_text "$1" "$2"
+  else
+    local t
+    t=$(printf '%s' "$1" | tr -d '\000-\037\177')
+    (( ${#t} > $2 )) && t="${t:0:$2}…"
+    printf '%s' "$t"
+  fi
+}
+
+for ci in "${!MCP_CONFIGS[@]}"; do
+  cfg="${MCP_CONFIGS[$ci]}"
   [[ -f "$cfg" ]] || continue
+  repo_cfg=0
+  [[ "$ci" -ge "$N_HOME_CONFIGS" ]] && repo_cfg=1
 
   emit_finding "$MODULE" "INFO" "M.1.found" "MCP config: $cfg" "" "" ""
 
+  # Only home-level configs: every file in a git checkout is 644, which says nothing.
   perms=$(file_perm_octal "$cfg")
-  if [[ -n "$perms" && "$perms" != "600" && "$perms" != "400" ]]; then
+  if [[ "$repo_cfg" -eq 0 && -n "$perms" && "$perms" != "600" && "$perms" != "400" ]]; then
     emit_finding "$MODULE" "MEDIUM" "M.1.perm" \
       "MCP config readable by other users: $cfg ($perms)" \
       "MCP configs often carry API keys in env blocks or args." \
@@ -82,7 +103,7 @@ for cfg in "${MCP_CONFIGS[@]}"; do
       function flush() { if (name != "") printf "%s\037%s\037%s\037%s\037%s\037%s\n", "", name, "", cmd, args, url }
       /^\[/ {
         flush(); name = ""; cmd = ""; args = ""; url = ""
-        if (match($0, /^\[mcp_servers\.[^].]+\][[:space:]]*$/)) {
+        if (match($0, /^\[mcp_servers\.("[^"]+"|[^].]+)\][[:space:]]*$/)) {
           name = $0; sub(/^\[mcp_servers\./, "", name); sub(/\][[:space:]]*$/, "", name); gsub(/"/, "", name)
         }
         next
@@ -112,12 +133,12 @@ for cfg in "${MCP_CONFIGS[@]}"; do
     while IFS= read -r name; do
       [[ -z "$name" ]] && continue
       srv_scope+=(""); srv_names+=("$name"); srv_type+=(""); srv_cmd+=("?"); srv_args+=(""); srv_url+=("")
-    done < <(grep -oE '"[A-Za-z0-9_\-]+"\s*:\s*\{' "$cfg" 2>/dev/null | sed -E 's/^"([^"]+)".*/\1/' | grep -vE '^(mcpServers|servers|env|args|projects|headers)$')
+    done < <(grep -oE '"[A-Za-z0-9_-]+"[[:space:]]*:[[:space:]]*\{' "$cfg" 2>/dev/null | sed -E 's/^"([^"]+)".*/\1/' | grep -vE '^(mcpServers|servers|env|args|projects|headers)$')
   fi
 
   for i in "${!srv_names[@]}"; do
     total_servers=$((total_servers+1))
-    name="${srv_names[$i]}"
+    name=$(show "${srv_names[$i]}" 40)
     cmd="${srv_cmd[$i]}"
     args="${srv_args[$i]}"
     url="${srv_url[$i]}"
@@ -128,16 +149,17 @@ for cfg in "${MCP_CONFIGS[@]}"; do
     # query strings of remote MCP URLs often carry tokens.
     if [[ -z "$cmd" && -n "$url" ]] || [[ "${srv_type[$i]}" =~ ^(http|sse|streamable-http)$ ]]; then
       total_remote=$((total_remote+1))
-      scheme="${url%%://*}"
-      host="${url#*://}"; host="${host%%/*}"; host="${host%%\?*}"; host="${host##*@}"
+      if [[ "$url" == *://* ]]; then scheme="${url%%://*}"; rest="${url#*://}"; else scheme=""; rest="$url"; fi
+      [[ "$scheme" =~ ^[A-Za-z][A-Za-z0-9+.-]{0,15}$ ]] || scheme=""
+      host="${rest%%/*}"; host="${host%%\?*}"; host="${host##*@}"; host=$(show "$host" 80)
       if [[ "$scheme" == "https" ]]; then
         emit_finding "$MODULE" "INFO" "M.2.remote" \
           "Remote MCP server '$name' (${srv_type[$i]:-http}): $where" \
           "Host: $host. Tool calls and their arguments are sent to this host." "" ""
       else
         emit_finding "$MODULE" "MEDIUM" "M.2.remote.insecure" \
-          "Remote MCP server '$name' uses unencrypted ${scheme:-unknown}: $where" \
-          "Host: $host. Tool calls, arguments and any auth headers travel in clear text." \
+          "Remote MCP server '$name' does not use https: $where" \
+          "Scheme: ${scheme:-none}. Host: $host. Tool calls, arguments and any auth headers may travel in clear text." \
           "Switch the server URL to https, or remove the server." ""
       fi
       continue
@@ -151,7 +173,7 @@ for cfg in "${MCP_CONFIGS[@]}"; do
       [[ "$a" == -* || "$a" == "run" ]] && continue
       pkg="$a"; break
     done
-    launch="Launcher: $cmd  Package: ${pkg:-(none)}"
+    launch="Launcher: $(show "$cmd" 60)  Package: $(show "${pkg:-(none)}" 80)"
 
     # Classify launch method
     case "$cmd" in
@@ -197,7 +219,7 @@ for cfg in "${MCP_CONFIGS[@]}"; do
         ;;
       *)
         emit_finding "$MODULE" "MEDIUM" "M.2.unknown" \
-          "MCP server '$name' uses unrecognized launcher: $cmd" \
+          "MCP server '$name' uses an unrecognized launcher: $where" \
           "$launch" \
           "Verify what this is. If it's a one-off tool fetched at runtime, treat as supply-chain risk." \
           ""

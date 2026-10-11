@@ -27,8 +27,8 @@ fi
 
 # SSH config — look for prod-* aliases
 if [[ -f "$HOME/.ssh/config" ]]; then
-  prod_hosts=$(grep -ciE '^Host\s+(prod|production)' "$HOME/.ssh/config" 2>/dev/null) || prod_hosts=0
-  total_hosts=$(grep -cE '^Host\s+' "$HOME/.ssh/config" 2>/dev/null) || total_hosts=0
+  prod_hosts=$(grep -ciE '^Host[[:space:]]+(prod|production)' "$HOME/.ssh/config" 2>/dev/null) || prod_hosts=0
+  total_hosts=$(grep -cE '^Host[[:space:]]+' "$HOME/.ssh/config" 2>/dev/null) || total_hosts=0
   if [[ "$total_hosts" -gt 0 ]]; then
     emit_finding "$MODULE" "INFO" "D.ssh" \
       "SSH config has $total_hosts host(s), $prod_hosts marked as prod" \

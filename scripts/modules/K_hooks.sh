@@ -30,7 +30,7 @@ for s in "${GLOBAL_AGENT_SETTINGS[@]}"; do
     hook_lines=""
     while IFS=: read -r n _; do
       hook_lines+="$(untrusted_snippet "$s" "$n")"$'\n'
-    done < <(grep -nE '"command"\s*:\s*"[^"]+"' "$s" 2>/dev/null | head -5)
+    done < <(grep -nE '"command"[[:space:]]*:[[:space:]]*"[^"]+"' "$s" 2>/dev/null | head -5)
     emit_finding "$MODULE" "HIGH" "K.1.cc.hooks" \
       "Global agent hooks defined: $s" \
       "First commands found:"$'\n'"${hook_lines:-(no command field directly visible)}" \
@@ -115,7 +115,9 @@ for found in "${risky_paths[@]}"; do
     [[ -d "$repo_root/.git" ]] && break
   done
   if [[ -d "$repo_root/.git" ]]; then
-    remote=$(git -C "$repo_root" config --get remote.origin.url 2>/dev/null || echo "(no remote)")
+    # Read .git/config as a file: no git process inside a possibly untrusted repo.
+    remote=$(sed -n '/^\[remote "origin"\]/,/^\[/{s/^[[:space:]]*url[[:space:]]*=[[:space:]]*//p;}' "$repo_root/.git/config" 2>/dev/null | head -1)
+    remote=$(redact_secrets_in_text "${remote:-(no remote)}")
   else
     remote="(no enclosing git repo found)"
   fi

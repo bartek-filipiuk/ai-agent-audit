@@ -33,6 +33,9 @@ fi
 
 _secrets_mktemp() { mktemp "$_SECRETS_TMPDIR/s.XXXXXX"; }
 
+# Bracket classes put '-' last and never contain '\': in POSIX EREs (GNU grep, BSD grep)
+# a backslash inside [...] is a literal character, so "[A-Za-z0-9_\-]" also matched the
+# '\' of an escaped quote and purge broke JSON strings in session files.
 # Each entry: ERE-pattern|||human-readable type|||service / where it's used|||where to rotate|||severity hint
 # Severity hints are advisory; the calling module decides actual severity for the finding.
 # Order matters: more specific patterns must come before generic ones (e.g. sk-ant- before sk-).
@@ -42,14 +45,14 @@ SECRET_PATTERNS=(
   'ASIA[0-9A-Z]{16}|||AWS STS Session Token (short-lived)|||AWS STS|||Re-run aws sso login (auto-refreshed)|||LOW'
 
   # --- Google / GCP ---
-  'AIza[0-9A-Za-z_\-]{35}|||Google API Key|||Google Cloud|||console.cloud.google.com → APIs & Services → Credentials → Delete/Regenerate key|||HIGH'
-  'ya29\.[0-9A-Za-z_\-]{20,}|||Google OAuth Access Token|||Google OAuth|||myaccount.google.com → Security → Third-party access → Remove app|||HIGH'
+  'AIza[0-9A-Za-z_-]{35}|||Google API Key|||Google Cloud|||console.cloud.google.com → APIs & Services → Credentials → Delete/Regenerate key|||HIGH'
+  'ya29\.[0-9A-Za-z_-]{20,}|||Google OAuth Access Token|||Google OAuth|||myaccount.google.com → Security → Third-party access → Remove app|||HIGH'
 
   # --- AI providers (most specific first) ---
-  'sk-ant-api03-[A-Za-z0-9_\-]{80,}|||Anthropic API Key (api03)|||console.anthropic.com|||console.anthropic.com → Settings → API Keys → Disable|||HIGH'
-  'sk-ant-[A-Za-z0-9_\-]{40,}|||Anthropic API Key|||console.anthropic.com|||console.anthropic.com → Settings → API Keys → Disable|||HIGH'
-  'sk-proj-[A-Za-z0-9_\-]{40,}|||OpenAI Project Key|||platform.openai.com|||platform.openai.com → API keys → Revoke|||HIGH'
-  'sk-svcacct-[A-Za-z0-9_\-]{20,}|||OpenAI Service Account|||platform.openai.com|||platform.openai.com → Service Accounts → Delete|||HIGH'
+  'sk-ant-api03-[A-Za-z0-9_-]{80,}|||Anthropic API Key (api03)|||console.anthropic.com|||console.anthropic.com → Settings → API Keys → Disable|||HIGH'
+  'sk-ant-[A-Za-z0-9_-]{40,}|||Anthropic API Key|||console.anthropic.com|||console.anthropic.com → Settings → API Keys → Disable|||HIGH'
+  'sk-proj-[A-Za-z0-9_-]{40,}|||OpenAI Project Key|||platform.openai.com|||platform.openai.com → API keys → Revoke|||HIGH'
+  'sk-svcacct-[A-Za-z0-9_-]{20,}|||OpenAI Service Account|||platform.openai.com|||platform.openai.com → Service Accounts → Delete|||HIGH'
   'sk-[A-Za-z0-9]{48}|||OpenAI Legacy Key (or generic sk-)|||platform.openai.com (likely)|||platform.openai.com → API keys → Revoke (verify provider first)|||MEDIUM'
   'hf_[A-Za-z0-9]{30,}|||HuggingFace Access Token|||huggingface.co|||huggingface.co → Settings → Access Tokens → Revoke|||HIGH'
   'r8_[A-Za-z0-9]{30,}|||Replicate API Token|||replicate.com|||replicate.com → Account → API tokens → Revoke|||HIGH'
@@ -72,29 +75,29 @@ SECRET_PATTERNS=(
   'ghu_[A-Za-z0-9]{30,}|||GitHub User-to-server Token|||github.com|||Revoke OAuth App in GitHub Settings|||HIGH'
   'ghs_[A-Za-z0-9]{30,}|||GitHub App Server-to-server Token|||github.com|||GitHub App settings → Regenerate token|||HIGH'
   'ghr_[A-Za-z0-9]{30,}|||GitHub Refresh Token|||github.com|||Revoke OAuth App in GitHub Settings|||HIGH'
-  'glpat-[A-Za-z0-9_\-]{20,}|||GitLab Personal Access Token|||gitlab.com|||gitlab.com → User → Preferences → Access Tokens → Revoke|||HIGH'
+  'glpat-[A-Za-z0-9_-]{20,}|||GitLab Personal Access Token|||gitlab.com|||gitlab.com → User → Preferences → Access Tokens → Revoke|||HIGH'
 
   # --- Package registries ---
   'npm_[A-Za-z0-9]{36}|||npm Auth Token|||npmjs.com|||npmjs.com → Account → Access Tokens → Revoke|||HIGH'
-  'pypi-AgEIc[A-Za-z0-9_\-]{20,}|||PyPI API Token|||pypi.org|||pypi.org → Account → API tokens → Revoke|||HIGH'
+  'pypi-AgEIc[A-Za-z0-9_-]{20,}|||PyPI API Token|||pypi.org|||pypi.org → Account → API tokens → Revoke|||HIGH'
 
   # --- Communication platforms ---
   'xoxb-[0-9]{10,}-[0-9]{10,}-[A-Za-z0-9]{20,}|||Slack Bot Token|||api.slack.com|||api.slack.com → App → OAuth & Permissions → Reinstall|||HIGH'
   'xoxp-[0-9]{10,}-[0-9]{10,}-[A-Za-z0-9]{20,}|||Slack User Token|||api.slack.com|||Revoke via app config|||HIGH'
   'hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+|||Slack Incoming Webhook URL|||api.slack.com|||App config → Incoming Webhooks → Delete|||HIGH'
-  'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\-]+|||Discord Webhook URL|||discord.com|||Server Settings → Integrations → Webhooks → Delete|||HIGH'
-  '[0-9]{9,10}:AA[A-Za-z0-9_\-]{33}|||Telegram Bot Token|||t.me/BotFather|||Open chat with @BotFather → /revoke|||HIGH'
+  'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+|||Discord Webhook URL|||discord.com|||Server Settings → Integrations → Webhooks → Delete|||HIGH'
+  '[0-9]{9,10}:AA[A-Za-z0-9_-]{33}|||Telegram Bot Token|||t.me/BotFather|||Open chat with @BotFather → /revoke|||HIGH'
 
   # --- Database connection strings ---
-  'postgres(ql)?://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._\-]+|||Postgres URL with password|||DB infrastructure|||Rotate DB password via DB management panel / mgmt CLI|||HIGH'
-  'mysql://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._\-]+|||MySQL URL with password|||DB infrastructure|||Rotate DB password via mgmt panel|||HIGH'
-  'mongodb(\+srv)?://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._\-]+|||MongoDB URL with password|||DB infrastructure|||Atlas / mgmt panel → Reset DB user password|||HIGH'
-  'redis://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._\-]+|||Redis URL with password|||DB infrastructure|||Reset Redis AUTH (CONFIG SET requirepass) and update consumers|||HIGH'
-  'amqps?://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._\-]+|||AMQP URL with password|||Message broker|||RabbitMQ admin → Users → Set password|||HIGH'
+  'postgres(ql)?://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._-]+|||Postgres URL with password|||DB infrastructure|||Rotate DB password via DB management panel / mgmt CLI|||HIGH'
+  'mysql://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._-]+|||MySQL URL with password|||DB infrastructure|||Rotate DB password via mgmt panel|||HIGH'
+  'mongodb(\+srv)?://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._-]+|||MongoDB URL with password|||DB infrastructure|||Atlas / mgmt panel → Reset DB user password|||HIGH'
+  'redis://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._-]+|||Redis URL with password|||DB infrastructure|||Reset Redis AUTH (CONFIG SET requirepass) and update consumers|||HIGH'
+  'amqps?://[^:@[:space:]]+:[^@[:space:]]+@[A-Za-z0-9._-]+|||AMQP URL with password|||Message broker|||RabbitMQ admin → Users → Set password|||HIGH'
 
   # --- Generic high-value patterns ---
   '-----BEGIN[ A-Z]+PRIVATE KEY-----|||PEM Private Key (raw)|||varies (SSH/TLS/JWT signing)|||Generate new keypair, distribute new pubkey, retire old|||HIGH'
-  'eyJ[A-Za-z0-9_\-]{15,}\.[A-Za-z0-9_\-]{15,}\.[A-Za-z0-9_\-]{15,}|||JWT (signed token)|||varies|||Invalidate session / rotate signing key|||MEDIUM'
+  'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}|||JWT (signed token)|||varies|||Invalidate session / rotate signing key|||MEDIUM'
 )
 
 # A detected token must not continue an identifier or a base64url blob. Without this left
@@ -220,6 +223,7 @@ scan_classify_to_inventory() {
   local total=0
 
   local entry pat type_label service rotate sev rest matches match fp
+  local -A seen=()
 
   for entry in "${SECRET_PATTERNS[@]}"; do
     pat="${entry%%|||*}"; rest="${entry#*|||}"
@@ -228,11 +232,15 @@ scan_classify_to_inventory() {
     rotate="${rest%%|||*}"; rest="${rest#*|||}"
     sev="${rest%%|||*}"
 
-    matches=$(grep -oE "$(bounded_pattern "$pat")" "$file" 2>/dev/null | strip_left | sort -u)
+    matches=$(grep -oE -e "$(bounded_pattern "$pat")" "$file" 2>/dev/null | strip_left | sort -u)
     [[ -z "$matches" ]] && continue
 
     while IFS= read -r match; do
       [[ -z "$match" ]] && continue
+      # Overlapping patterns (sk-ant-api03-… also matches sk-ant-…): the first, more
+      # specific pattern classifies a value; later ones skip it.
+      [[ -n "${seen[$match]:-}" ]] && continue
+      seen[$match]=1
       fp=$(redact_fingerprint "$match")
       # Cells are split on raw '|' by every reader; replace rather than escape it.
       local t_esc="${type_label//|//}"
@@ -287,7 +295,7 @@ scan_classify_files_aggregated() {
   local f found leaky=0
   for f in "${files[@]}"; do
     [[ -r "$f" ]] || continue
-    found=$(grep -hoE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null) || continue
+    found=$(grep -hoE -e "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null) || continue
     printf '%s\n' "$found" | strip_left >> "$merged"
     leaky=$((leaky+1))
   done
@@ -304,6 +312,7 @@ scan_classify_files_aggregated() {
   local tmp_table; tmp_table=$(_secrets_mktemp)
 
   local entry pat type_label service rotate sev rest matches match fp
+  local -A seen=()
   for entry in "${SECRET_PATTERNS[@]}"; do
     pat="${entry%%|||*}"; rest="${entry#*|||}"
     type_label="${rest%%|||*}"; rest="${rest#*|||}"
@@ -316,6 +325,10 @@ scan_classify_files_aggregated() {
 
     while IFS= read -r match; do
       [[ -z "$match" ]] && continue
+      # Overlapping patterns (sk-ant-api03-… also matches sk-ant-…): the first, more
+      # specific pattern classifies a value; later ones skip it.
+      [[ -n "${seen[$match]:-}" ]] && continue
+      seen[$match]=1
       fp=$(redact_fingerprint "$match")
       printf '| %s | %s | %s | %s | `%s` |\n' "${type_label//|//}" "${service//|//}" "${rotate//|//}" "$sev" "$fp" >> "$tmp_table"
       total=$((total+1))

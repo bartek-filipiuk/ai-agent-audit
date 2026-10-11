@@ -9,6 +9,7 @@ export AUDIT_DIR="$OUT"
 gh=$(fake_secret ghp_ 36 'A-Za-z0-9')
 aws=$(fake_secret AKIA 16 'A-Z0-9')
 ant=$(fake_secret sk-ant- 60 'A-Za-z0-9')
+ant3=$(fake_secret sk-ant-api03- 95 'A-Za-z0-9')
 db_remote="postgres://admin:$(fake_secret '' 16 'A-Za-z0-9')@prod.example.com"
 db_local="postgres://dev:dev@localhost"
 
@@ -25,6 +26,8 @@ make_fixtures() {
     printf '{"uuid":"a","parentUuid":null,"message":"hello"}\n'
     printf '{"uuid":"b","parentUuid":"a","message":"key %s and %s:5432/app"}\n' "$aws" "$db_remote"
     printf '{"uuid":"c","parentUuid":"b","message":"done","encrypted_content":"%s"}\n' "$BLOB"
+    # Tool input as Claude Code stores it: the key is followed by an escaped quote (\").
+    printf '{"uuid":"d","parentUuid":"c","message":"tool input: {\\"ANTHROPIC_API_KEY\\": \\"%s\\"} ok"}\n' "$ant3"
   } > "$SESSION"
   printf 'ANTHROPIC_API_KEY=%s\n' "$ant" > "$ENVSNAP"
 }
@@ -36,16 +39,16 @@ make_fixtures
 before=$(sums)
 bash "$SCRIPTS/purge-secrets.sh" > "$T/dry.log" 2>&1
 assert_eq "$before" "$(sums)" "dry-run leaves files untouched"
-assert_grep 'Lines containing secrets: 3' "$T/dry.log" "dry-run counts 3 lines (history, session, snapshot)"
+assert_grep 'Lines containing secrets: 4' "$T/dry.log" "dry-run counts 4 lines (history, 2 session, snapshot)"
 assert_not_grep "$gh|$aws|$ant" "$T/dry.log" "dry-run output shows fingerprints only"
 
 # --- purge (redact in place) ---
 bash "$SCRIPTS/purge-secrets.sh" --purge --no-prompt > "$T/purge.log" 2>&1
 assert_eq 3 "$(wc -l < "$HOME/.bash_history" | tr -d ' ')" "history keeps its line count"
-assert_eq 3 "$(wc -l < "$SESSION" | tr -d ' ')" "session keeps its line count"
+assert_eq 4 "$(wc -l < "$SESSION" | tr -d ' ')" "session keeps its line count"
 assert_true "every session line is still valid JSON" \
   python3 -c 'import json,sys; [json.loads(l) for l in open(sys.argv[1])]' "$SESSION"
-assert_eq "" "$(grep -lF -e "$gh" -e "$aws" -e "$ant" -e "$db_remote" "$HOME/.bash_history" "$SESSION" "$ENVSNAP")" "no secret left in purged files"
+assert_eq "" "$(grep -lF -e "$gh" -e "$aws" -e "$ant" -e "$ant3" -e "$db_remote" "$HOME/.bash_history" "$SESSION" "$ENVSNAP")" "no secret left in purged files"
 assert_grep '\[REDACTED:ghp_' "$HOME/.bash_history"
 assert_grep '\[REDACTED:AKIA' "$SESSION"
 assert_grep '\[REDACTED:' "$ENVSNAP"
@@ -65,7 +68,7 @@ make_fixtures
 rm -rf "$backups"
 bash "$SCRIPTS/purge-secrets.sh" --purge --delete-lines --no-backup --no-prompt > "$T/del.log" 2>&1
 assert_eq 2 "$(wc -l < "$HOME/.bash_history" | tr -d ' ')" "delete-lines drops the secret line"
-assert_eq 2 "$(wc -l < "$SESSION" | tr -d ' ')" "delete-lines drops the session line"
+assert_eq 2 "$(wc -l < "$SESSION" | tr -d ' ')" "delete-lines drops both session lines"
 assert_file_absent "$backups"
 
 report

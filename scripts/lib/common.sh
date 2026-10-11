@@ -120,28 +120,6 @@ file_mtime_unix() {
   fi
 }
 
-# Safe count of lines matching pattern. Always returns a clean integer (0 on error/no match).
-# Replacement for the `$(grep -c '...' file 2>/dev/null || echo 0)` pattern, which produced "0\n0"
-# when grep printed "0\n" on no matches AND fell through to the || branch (exit 1).
-count_matches() {
-  local pattern="$1" file="$2" flags="${3:-E}"
-  local count=0
-  if [[ -r "$file" ]]; then
-    count=$(grep -c -"$flags" "$pattern" "$file" 2>/dev/null) || count=0
-  fi
-  printf '%s' "${count:-0}" | tr -d '[:space:]'
-}
-
-# Count individual occurrences of a pattern (not just matching lines).
-count_pattern_matches() {
-  local pattern="$1" file="$2"
-  local count=0
-  if [[ -r "$file" ]]; then
-    count=$(grep -oE "$pattern" "$file" 2>/dev/null | wc -l)
-  fi
-  printf '%s' "${count:-0}" | tr -d '[:space:]'
-}
-
 # Decode a single field from a JSON object string. Tries jq → python3 → perl → sed (lossy).
 # Usage: json_decode_field "$json_line" "remediation"
 # Critical: handles escaped quotes \" inside the value (which sed `[^"]*` cannot).
@@ -335,7 +313,7 @@ dev_find() {
 }
 
 export -f has json_escape emit_finding untrusted_text untrusted_snippet claude_settings_flags file_perm_octal file_mtime_unix \
-          count_matches count_pattern_matches json_decode_field \
+          json_decode_field \
           ssh_key_has_passphrase _agent_project_dirs build_dev_search_paths dev_find \
           log warn err
 

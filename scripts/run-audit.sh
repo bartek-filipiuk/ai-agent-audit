@@ -78,6 +78,10 @@ AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
 FINDINGS_DIR="$AUDIT_DIR/findings"
 export AUDIT_DIR FINDINGS_DIR
 source "$SCRIPT_DIR/lib/common.sh"
+# Remove every module's private temp dir even if the run is interrupted (each module also
+# cleans its own; this covers a module killed before its trap ran).
+trap '_secrets_cleanup; rm -rf "$AUDIT_DIR/tmp"' EXIT
+trap '_secrets_cleanup; rm -rf "$AUDIT_DIR/tmp"; exit 130' INT TERM
 
 # Map module letter to script
 declare -A MODULE_SCRIPTS=(

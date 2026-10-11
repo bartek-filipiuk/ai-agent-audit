@@ -141,8 +141,8 @@ file_secrets() {
   local file="$1"
   [[ -r "$file" ]] || return
   {
-    grep -oE "$ACTIVE_PATTERN" "$file"
-    grep -oE "$DB_URL_BOUNDED" "$file" | grep -vE "$LOCAL_HOSTS_RE"
+    grep -oE -e "$ACTIVE_PATTERN" "$file"
+    grep -oE -e "$DB_URL_BOUNDED" "$file" | grep -vE "$LOCAL_HOSTS_RE"
   } 2>/dev/null | strip_left | sort -u
 }
 
@@ -185,15 +185,16 @@ redact_in_place() {  # redact_in_place <file> <secrets-file>
     NR == FNR { from[++n] = $1; to[n] = $2; next }
     { line = $0; for (k = 1; k <= n; k++) line = rep(line, from[k], to[k]); print line }
   ' "$pairs" "$file" > "$out" || return 1
-  # Write through the original inode: keeps permissions, ownership and hard links.
-  cat "$out" > "$file"
+  # Write through the original inode (keeps permissions, ownership, hard links), with
+  # INT/TERM ignored so a Ctrl-C cannot leave the file half-written.
+  (trap '' INT TERM; cat "$out" > "$file")
 }
 
 delete_lines() {  # delete_lines <file> <line-numbers-file>
   local file="$1" lines="$2" out
   out=$(_secrets_mktemp)
   LC_ALL=C awk 'NR == FNR { del[$1] = 1; next } !(FNR in del)' "$lines" "$file" > "$out" || return 1
-  cat "$out" > "$file"
+  (trap '' INT TERM; cat "$out" > "$file")
 }
 
 # Process one file: dry-run preview or purge.

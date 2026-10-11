@@ -30,7 +30,10 @@ assert_eq "" "$(find "$OUT" -type f -perm -g+r 2>/dev/null)" "no report file is 
 # Interrupted standalone module run.
 rm -rf "$OUT"
 export AUDIT_DIR="$OUT"
-timeout -s INT 0.5 bash "$SCRIPTS/modules/J_history_sessions.sh" >/dev/null 2>&1
+# GNU timeout; macOS CI installs coreutils as gtimeout. Without either the case would pass
+# vacuously, so it fails instead.
+to=$(command -v timeout || command -v gtimeout) || { _fail "timeout/gtimeout not installed"; report; exit; }
+"$to" -s INT 0.5 bash "$SCRIPTS/modules/J_history_sessions.sh" >/dev/null 2>&1
 unset AUDIT_DIR
 left=$(find "$OUT/tmp" -type f 2>/dev/null)
 assert_eq "" "$left" "no temp file left under the output dir after SIGINT"

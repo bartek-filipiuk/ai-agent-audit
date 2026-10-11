@@ -75,7 +75,7 @@ if [[ -f "$HOME/.aws/credentials" ]]; then
   profile_count=$(grep -cE '^\[' "$HOME/.aws/credentials" 2>/dev/null) || profile_count=0
 
   # Check for long-lived AKIA keys (vs SSO/temporary STS)
-  if grep -qE 'aws_access_key_id\s*=\s*AKIA' "$HOME/.aws/credentials" 2>/dev/null; then
+  if grep -qE 'aws_access_key_id[[:space:]]*=[[:space:]]*AKIA' "$HOME/.aws/credentials" 2>/dev/null; then
     emit_finding "$MODULE" "HIGH" "A.2.aws.longlived" \
       "AWS long-lived access key (AKIA) found in ~/.aws/credentials" \
       "$profile_count profile(s) total. AKIA keys never expire. Compare to SSO/IAM Identity Center which rotates automatically." \

@@ -12,10 +12,20 @@ printf '{"m":"%s"}\n' "$tok" > "$HOME/.claude/projects/-p/s.jsonl"
 blob="gAAAAAB$(fake_secret '' 20 'A-Za-z0-9')hf_$(fake_secret '' 34 'A-Za-z0-9')"
 printf '{"encrypted_content":"%s"}\n' "$blob" >> "$HOME/.claude/projects/-p/s.jsonl"
 
+# One Anthropic api03 key followed by an escaped quote: matches two overlapping patterns
+# (api03 and generic sk-ant) and must still be one secret, without the trailing backslash.
+ant3=$(fake_secret sk-ant-api03- 95 'A-Za-z0-9')
+printf '{"m":"in: {\\"K\\": \\"%s\\"} ok"}\n' "$ant3" >> "$HOME/.claude/projects/-p/s.jsonl"
+# A PEM header: its pattern starts with '-', which grep must not read as an option.
+printf -- '-----BEGIN OPENSSH PRIVATE KEY-----\n' > "$HOME/.psql_history"
+
 run_audit --modules J
-assert_eq 1 "$(jq .summary.secrets_distinct "$OUT/audit-report.json")" "same key in two sources counts once, blob fragment not counted"
-assert_eq 2 "$(jq .summary.secrets_occurrences "$OUT/audit-report.json")" "occurrences are still reported"
-assert_eq 1 "$(jq '.secrets_inventory_summary[0].count' "$OUT/audit-report.json")" "per-type summary dedupes too"
+assert_eq 3 "$(jq .summary.secrets_distinct "$OUT/audit-report.json")" "ghp once, api03 once, PEM once; blob fragment not counted"
+assert_eq 1 "$(grep -c 'Anthropic API Key' "$OUT/secrets-inventory.md")" "overlapping patterns give one row"
+assert_grep '\(108 chars\)' "$OUT/secrets-inventory.md" "fingerprint length excludes the escaping backslash"
+assert_grep 'PEM Private Key' "$OUT/secrets-inventory.md" "PEM pattern starting with - is detected"
+assert_eq 4 "$(jq .summary.secrets_occurrences "$OUT/audit-report.json")" "occurrences are still reported"
+assert_eq 1 "$(jq '[.secrets_inventory_summary[] | select(.type=="GitHub Classic PAT")][0].count' "$OUT/audit-report.json")" "per-type summary dedupes too"
 
 # MCP configs: a known token format under an env key, an unknown format passed as a flag,
 # and an env reference that must not count.
