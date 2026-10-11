@@ -29,12 +29,22 @@ if [[ "$OS" == "macos" ]]; then
       "CVE-2025-55284 — Claude Code DNS exfiltration bypassed network monitoring"
   fi
 elif [[ "$OS" == "linux" ]]; then
-  if has ufw && ufw status 2>/dev/null | grep -q 'Status: active'; then
-    emit_finding "$MODULE" "INFO" "I.fw" "ufw active" "" "" ""
+  # `ufw status` needs root, and `systemctl is-active ufw` reports "active" even when the
+  # firewall is disabled, so ufw.conf is the source of truth for ufw.
+  fw=""
+  if grep -q '^ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null; then
+    fw="ufw"
+  elif has systemctl && systemctl is-active --quiet firewalld 2>/dev/null; then
+    fw="firewalld"
+  elif has systemctl && systemctl is-active --quiet nftables 2>/dev/null; then
+    fw="nftables"
   elif has firewall-cmd && firewall-cmd --state 2>/dev/null | grep -q running; then
-    emit_finding "$MODULE" "INFO" "I.fw" "firewalld running" "" "" ""
+    fw="firewalld"
+  fi
+  if [[ -n "$fw" ]]; then
+    emit_finding "$MODULE" "INFO" "I.fw" "Firewall active: $fw" "" "" ""
   else
-    emit_finding "$MODULE" "LOW" "I.nofw" "No firewall detected (ufw/firewalld)" "" "Enable: sudo ufw enable" ""
+    emit_finding "$MODULE" "LOW" "I.nofw" "No firewall detected (ufw / firewalld / nftables)" "" "Enable: sudo ufw enable" ""
   fi
 fi
 

@@ -21,7 +21,7 @@ log "$MODULE" "Starting AI hooks + repo config audit..."
 GLOBAL_AGENT_SETTINGS=(
   "$HOME/.claude/settings.json"
   "$HOME/.claude/settings.local.json"
-  "$HOME/.config/claude-code/settings.json"
+  "/etc/claude-code/managed-settings.json"
 )
 for s in "${GLOBAL_AGENT_SETTINGS[@]}"; do
   [[ -f "$s" ]] || continue
@@ -65,7 +65,9 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
     [[ -z "$found" ]] && continue
     repo_cfg_total=$((repo_cfg_total+1))
 
-    if [[ -f "$found" ]] && grep -qE '"hooks"|"command"[[:space:]]*:|allowedTools|alwaysAllow' "$found" 2>/dev/null; then
+    # Executable or trust-widening content: hooks/commands, permission allow-lists and
+    # bypass mode, env overrides (ANTHROPIC_BASE_URL = token exfil), apiKeyHelper, auto-approved MCP.
+    if [[ -f "$found" ]] && grep -qE '"hooks"|"command"[[:space:]]*:|allowedTools|alwaysAllow|"allow"[[:space:]]*:|bypassPermissions|"env"[[:space:]]*:|apiKeyHelper|enableAllProjectMcpServers' "$found" 2>/dev/null; then
       risky_paths+=("$found")
     else
       plain_paths+=("$found")
@@ -89,9 +91,10 @@ for found in "${risky_paths[@]}"; do
   else
     remote="(no enclosing git repo found)"
   fi
+  flags=$(claude_settings_flags "$found")
   emit_finding "$MODULE" "HIGH" "K.2.risky" \
-    "Repo-level AI config with hooks / allowed-tools: $found" \
-    "Origin: $remote. Contains executable hooks or allowed-tools entries — runs with full agent privileges in this repo." \
+    "Repo-level AI config with hooks / permissions / env overrides: $found" \
+    "Origin: $remote. Risk flags: ${flags:-hooks or commands}. These run with full agent privileges, or widen what the agent may do, in this repo." \
     "Inspect: cat \"$found\". For untrusted/cloned repos, run agents with --no-config or in a devcontainer. Verify each hook command before allowing the agent to run here." \
     "CVE-2025-59536 / CVE-2026-21852 — RCE via repo-level config files"
 done

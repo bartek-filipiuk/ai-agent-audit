@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module C: Token scope audit — token age, scope, type
+# Module C: Token scope audit — token type (GitHub), SSO vs long-lived (AWS), npm token count
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -12,9 +12,10 @@ log "$MODULE" "Starting token scope audit..."
 if [[ "$HAS_GH" -eq 1 ]]; then
   status=$(gh auth status 2>&1 || true)
   if echo "$status" | grep -q 'Logged in'; then
-    # Determine token type from prefix (ghp_ classic, github_pat_ fine-grained, gho_ OAuth)
-    token=$(gh auth token 2>/dev/null || echo "")
-    case "$token" in
+    # Token type from its prefix (ghp_ classic, github_pat_ fine-grained, gho_ OAuth).
+    # Only the first 11 characters ever reach a variable.
+    token_prefix=$(gh auth token 2>/dev/null | cut -c1-11)
+    case "$token_prefix" in
       ghp_*)
         emit_finding "$MODULE" "HIGH" "C.gh.classic" \
           "GitHub classic Personal Access Token in use" \
@@ -34,9 +35,6 @@ fi
 
 # AWS — detect long-lived vs SSO
 if [[ -f "$HOME/.aws/credentials" ]]; then
-  if grep -qE 'aws_access_key_id\s*=\s*AKIA' "$HOME/.aws/credentials" 2>/dev/null; then
-    : # already flagged by Module A.2
-  fi
   # SSO config
   if [[ -f "$HOME/.aws/config" ]] && grep -qE 'sso_session|sso_start_url' "$HOME/.aws/config" 2>/dev/null; then
     emit_finding "$MODULE" "INFO" "C.aws.sso" "AWS SSO configured (good — short-lived credentials)" "" "" ""
@@ -45,7 +43,13 @@ fi
 
 # npm token list
 if [[ "$HAS_NPM" -eq 1 ]] && npm whoami >/dev/null 2>&1; then
-  tokens=$(npm token list 2>/dev/null | grep -cE '^Token') || tokens=0
+  # The human-readable list is a box-drawn table; count via --json.
+  if [[ "$HAS_JQ" -eq 1 ]]; then
+    tokens=$(npm token list --json 2>/dev/null | jq 'length' 2>/dev/null) || tokens=0
+  else
+    tokens=$(npm token list 2>/dev/null | grep -cE '^│ [0-9a-f]{6}') || tokens=0
+  fi
+  [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
   if [[ "$tokens" -gt 0 ]]; then
     emit_finding "$MODULE" "MEDIUM" "C.npm" \
       "$tokens npm token(s) for current account" \

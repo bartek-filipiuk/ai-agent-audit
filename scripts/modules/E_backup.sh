@@ -47,12 +47,11 @@ for p in "${ENV_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
-    pushd "$repo" >/dev/null 2>&1 || continue
-    remote_count=$(git remote 2>/dev/null | wc -l | tr -d ' ')
+    # Read .git/config as a file: no git process inside a possibly untrusted repo.
+    remote_count=$(grep -c '^\[remote "' "$repo/.git/config" 2>/dev/null) || remote_count=0
     if [[ "$remote_count" -le 1 ]]; then
       single_remote_repos=$((single_remote_repos+1))
     fi
-    popd >/dev/null 2>&1 || true
   done < <(find "$p" -maxdepth 3 -type d -name '.git' -exec dirname {} \; 2>/dev/null)
 done
 

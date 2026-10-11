@@ -2,7 +2,7 @@
 # Module N: Detection of known compromised packages and supply-chain attack indicators.
 #
 # Covers post-Nx attacks (2025-2026). Maintenance note: when a new IOC is published, add a
-# row to NPM_COMPROMISED / PIP_COMPROMISED / EXT_COMPROMISED. Format: pkg|<ERE version match>|<incident summary>
+# row to NPM_COMPROMISED / PIP_COMPROMISED / EXT_COMPROMISED. Format: pkg|<unanchored ERE version>|<incident summary>
 #
 # This module assumes nothing about runtime — it scans installed package lists and workspace
 # manifests. It does not download anything or hit a network.
@@ -16,66 +16,104 @@ log "$MODULE" "Starting compromised packages detection..."
 : > "$FINDINGS_DIR/$MODULE.jsonl"
 
 # ---------- IOC database ----------
+# The single list of compromised versions (module G no longer keeps its own Nx list).
+# Version patterns are unanchored EREs; callers anchor them with ^(...)$ when comparing a
+# whole version, and embed them as-is inside larger patterns.
 NPM_COMPROMISED=(
-  'axios|^1\.14\.1$|axios 1.14.1 was malicious (March 2026 — Claude Code source-code leak campaign distributed RAT via npm dependency cascade between 00:21 and 03:29 UTC on 2026-03-31)'
-  'axios|^0\.30\.4$|axios 0.30.4 was malicious (March 2026 — same campaign as 1.14.1)'
-  '@bitwarden/cli|^2026\.4\.0$|@bitwarden/cli 2026.4.0 contained 10MB obfuscated malware specifically hunting for Claude Code, Cursor, Codex CLI, Aider, Kiro, Gemini CLI authentication state (Checkmarx, April 2026)'
-  'nx|^20\.(9|10|11|12)\.0$|Nx s1ngularity attack (Aug 2025) — these versions published with credential-harvesting telemetry'
-  'nx|^21\.[5-8]\.0$|Nx s1ngularity attack (Aug 2025) — these versions published with credential-harvesting telemetry'
+  'axios|1\.14\.1|axios 1.14.1 was malicious (March 2026 — Claude Code source-code leak campaign distributed RAT via npm dependency cascade between 00:21 and 03:29 UTC on 2026-03-31)'
+  'axios|0\.30\.4|axios 0.30.4 was malicious (March 2026 — same campaign as 1.14.1)'
+  '@bitwarden/cli|2026\.4\.0|@bitwarden/cli 2026.4.0 contained 10MB obfuscated malware specifically hunting for Claude Code, Cursor, Codex CLI, Aider, Kiro, Gemini CLI authentication state (Checkmarx, April 2026)'
+  'nx|20\.(9|10|11|12)\.0|Nx s1ngularity attack (Aug 2025) — these versions published with credential-harvesting telemetry'
+  'nx|21\.[5-8]\.0|Nx s1ngularity attack (Aug 2025) — these versions published with credential-harvesting telemetry'
 )
 
 PIP_COMPROMISED=(
   # Reserved for future entries — add as they appear publicly.
 )
 
-# Extension dir-name patterns. Format: name_glob|incident
+# Extension dir-name globs. Installed extensions live in <publisher>.<name>-<version>/.
+# Format: name_glob|incident
 EXT_COMPROMISED=(
-  'prettier-vscode-plus*|prettier-vscode-plus VSCode extension (Nov 2025) — typo-squatted on official Prettier; deployed Anivia loader → OctoRAT RAT'
+  '*.prettier-vscode-plus-*|prettier-vscode-plus VSCode extension (Nov 2025) — typo-squatted on official Prettier; deployed Anivia loader → OctoRAT RAT'
 )
 
-# ---------- N.1: npm globally-installed and workspace package.json ----------
+# Escape ERE metacharacters in a package name (scoped names contain / and sometimes .).
+ere_quote() { printf '%s' "$1" | sed 's/[][\.*^$()+?{}|]/\\&/g'; }
+
+# Installed version of <pkg> under <project-dir>: node_modules/<pkg>/package.json, else
+# package-lock.json (v2/v3 "packages" map, including nested node_modules). One per line.
+resolved_versions() {
+  local dir="$1" pkg="$2" pkg_re
+  if [[ -f "$dir/node_modules/$pkg/package.json" ]]; then
+    grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "$dir/node_modules/$pkg/package.json" \
+      | head -1 | sed -E 's/.*"([^"]+)"$/\1/'
+  fi
+  [[ -f "$dir/package-lock.json" ]] || return 0
+  if [[ "$HAS_JQ" -eq 1 ]]; then
+    jq -r --arg p "$pkg" '.packages // {} | to_entries[]
+      | select(.key == "node_modules/" + $p or (.key | endswith("/node_modules/" + $p)))
+      | .value.version // empty' "$dir/package-lock.json" 2>/dev/null
+  else
+    pkg_re=$(ere_quote "$pkg")
+    grep -A4 -E "\"([^\"]*/)?node_modules/${pkg_re}\"[[:space:]]*:[[:space:]]*\\{" "$dir/package-lock.json" 2>/dev/null \
+      | grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' | sed -E 's/.*"([^"]+)"$/\1/'
+  fi
+}
+
+# ---------- N.1: npm — global installs ----------
 if [[ "$HAS_NPM" -eq 1 ]]; then
+  global_ls=$(npm ls -g --depth=0 2>/dev/null || true)
   for entry in "${NPM_COMPROMISED[@]}"; do
     pkg="${entry%%|*}"; rest="${entry#*|}"
-    ver_pat="${rest%%|*}"; rest="${rest#*|}"
-    incident="$rest"
-
-    # Global install
-    found_line=$(npm ls -g --depth=0 --parseable=false 2>/dev/null | grep -E "${pkg//\//\\/}@" | head -1 || true)
-    if [[ -n "$found_line" ]]; then
-      found_ver=$(printf '%s' "$found_line" | grep -oE "${pkg//\//\\/}@[^[:space:]]+" | head -1 | sed -E "s|^${pkg//\//\\/}@||")
-      if [[ -n "$found_ver" ]] && printf '%s' "$found_ver" | grep -qE "$ver_pat"; then
-        emit_finding "$MODULE" "CRITICAL" "N.1.npm.global" \
-          "Compromised npm package globally installed: $pkg@$found_ver" \
-          "Detected via: npm ls -g $pkg." \
-          "URGENT: (1) uninstall: npm uninstall -g \"$pkg\". (2) Treat machine as compromised — rotate ALL credentials this account had access to (GitHub, npm, AWS, SSH, crypto, AI provider keys). (3) Reinstall a known-safe version. (4) Audit shell init for shutdown injection (module G covers this)." \
-          "$incident"
-      fi
+    ver_pat="${rest%%|*}"; incident="${rest#*|}"
+    pkg_re=$(ere_quote "$pkg")
+    # Anchor the name: "nx@" must not match "lynx@" in the tree output.
+    match=$(printf '%s\n' "$global_ls" | grep -oE "(^|[[:space:]─└├│])${pkg_re}@[^[:space:]]+" | head -1)
+    found_ver="${match##*@}"
+    if [[ -n "$found_ver" ]] && printf '%s' "$found_ver" | grep -qE "^(${ver_pat})$"; then
+      emit_finding "$MODULE" "CRITICAL" "N.1.npm.global" \
+        "Compromised npm package globally installed: $pkg@$found_ver" \
+        "Detected via: npm ls -g --depth=0." \
+        "URGENT: (1) uninstall: npm uninstall -g \"$pkg\". (2) Treat machine as compromised — rotate ALL credentials this account had access to (GitHub, npm, AWS, SSH, crypto, AI provider keys). (3) Reinstall a known-safe version. (4) Audit shell init for shutdown injection (module G covers this)." \
+        "$incident"
     fi
   done
-
-  # Workspace package.json (declared dependencies — may not be installed but indicates exposure)
-  for p in "${DEV_SEARCH_PATHS[@]}"; do
-    [[ -d "$p" ]] || continue
-    while IFS= read -r pj; do
-      [[ -z "$pj" ]] && continue
-      for entry in "${NPM_COMPROMISED[@]}"; do
-        pkg="${entry%%|*}"; rest="${entry#*|}"
-        ver_pat="${rest%%|*}"; rest="${rest#*|}"
-        incident="$rest"
-        # Match "<pkg>": "<optional ~^>VERSION"
-        pkg_q=$(printf '%s' "$pkg" | sed 's|/|\\/|g')
-        if grep -qE "\"${pkg_q}\"[[:space:]]*:[[:space:]]*\"[~^=]?($ver_pat)\"" "$pj" 2>/dev/null; then
-          emit_finding "$MODULE" "CRITICAL" "N.1.npm.workspace" \
-            "Workspace package.json references compromised version: $pkg ($ver_pat) in $pj" \
-            "" \
-            "Pin to a known-safe version, run npm install --ignore-scripts, audit recent activity. If installed/built since the compromise window — rotate credentials." \
-            "$incident"
-        fi
-      done
-    done < <(find "$p" -maxdepth 4 -name 'package.json' -not -path '*/node_modules/*' 2>/dev/null | head -200)
-  done
 fi
+
+# ---------- N.1: npm — workspace projects (declared spec AND resolved version) ----------
+# No npm needed: manifests, lockfiles and node_modules are read as files.
+for p in "${DEV_SEARCH_PATHS[@]}"; do
+  [[ -d "$p" ]] || continue
+  while IFS= read -r pj; do
+    [[ -z "$pj" ]] && continue
+    dir=$(dirname "$pj")
+    for entry in "${NPM_COMPROMISED[@]}"; do
+      pkg="${entry%%|*}"; rest="${entry#*|}"
+      ver_pat="${rest%%|*}"; incident="${rest#*|}"
+      pkg_re=$(ere_quote "$pkg")
+      # Declared: "<pkg>": "<optional ~^=>VERSION"
+      if grep -qE "\"${pkg_re}\"[[:space:]]*:[[:space:]]*\"[~^=]?(${ver_pat})\"" "$pj" 2>/dev/null; then
+        emit_finding "$MODULE" "CRITICAL" "N.1.npm.workspace" \
+          "Workspace package.json references compromised version: $pkg in $pj" \
+          "Declared version matches ${ver_pat//\\/}." \
+          "Pin to a known-safe version, run npm install --ignore-scripts, audit recent activity. If installed/built since the compromise window — rotate credentials." \
+          "$incident"
+      fi
+      # Resolved: what is (or was locked to be) actually installed — catches ^1.14.0 → 1.14.1.
+      while IFS= read -r v; do
+        [[ -z "$v" ]] && continue
+        if printf '%s' "$v" | grep -qE "^(${ver_pat})$"; then
+          emit_finding "$MODULE" "CRITICAL" "N.1.npm.resolved" \
+            "Compromised version installed or locked: $pkg@$v in $dir" \
+            "Found in node_modules/$pkg/package.json or package-lock.json." \
+            "Treat this project as compromised: delete node_modules, pin a safe version, reinstall with --ignore-scripts, and rotate every credential reachable from this machine if it was installed or built here." \
+            "$incident"
+          break
+        fi
+      done < <(resolved_versions "$dir" "$pkg" | sort -u)
+    done
+  done < <(find "$p" -maxdepth 4 -name 'package.json' -not -path '*/node_modules/*' 2>/dev/null | head -200)
+done
 
 # ---------- N.2: pip ----------
 pip_cmd=""
@@ -87,7 +125,7 @@ if [[ -n "$pip_cmd" ]]; then
     ver_pat="${rest%%|*}"; rest="${rest#*|}"
     incident="$rest"
     found_ver=$($pip_cmd show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')
-    if [[ -n "$found_ver" ]] && printf '%s' "$found_ver" | grep -qE "$ver_pat"; then
+    if [[ -n "$found_ver" ]] && printf '%s' "$found_ver" | grep -qE "^(${ver_pat})$"; then
       emit_finding "$MODULE" "CRITICAL" "N.2.pip" \
         "Compromised pip package installed: $pkg==$found_ver" \
         "" "$pip_cmd uninstall $pkg. Audit credentials." "$incident"
@@ -98,18 +136,17 @@ fi
 # ---------- N.3: VSCode / Cursor / Windsurf extensions ----------
 EXT_DIRS=(
   "$HOME/.vscode/extensions"
+  "$HOME/.vscode-insiders/extensions"
   "$HOME/.vscode-server/extensions"
   "$HOME/.cursor/extensions"
   "$HOME/.windsurf/extensions"
-  "$HOME/.config/Code/User/extensions"
-  "$HOME/Library/Application Support/Code/User/extensions"
 )
 for d in "${EXT_DIRS[@]}"; do
   [[ -d "$d" ]] || continue
   for entry in "${EXT_COMPROMISED[@]}"; do
     glob="${entry%%|*}"
     incident="${entry#*|}"
-    found=$(find "$d" -maxdepth 2 -type d -iname "$glob" 2>/dev/null | head -3)
+    found=$(find "$d" -maxdepth 1 -type d -iname "$glob" 2>/dev/null | head -3)
     if [[ -n "$found" ]]; then
       emit_finding "$MODULE" "CRITICAL" "N.3.ext" \
         "Compromised IDE extension installed: $glob" \

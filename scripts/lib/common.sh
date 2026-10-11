@@ -179,36 +179,42 @@ ssh_key_has_passphrase() {
   return 2
 }
 
-# Lookup whether `nx` is installed in any project dir under HOME and at what version
-# (Nx s1ngularity check)
-find_nx_versions() {
-  if [[ "$HAS_NPM" -eq 1 ]]; then
-    # Look for package.json files under common dev locations, excluding node_modules
-    local search_paths=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
-    for p in "${search_paths[@]}"; do
-      [[ -d "$p" ]] || continue
-      find "$p" -maxdepth 4 -name 'package.json' -not -path '*/node_modules/*' 2>/dev/null | \
-      while read -r pj; do
-        if grep -q '"nx"' "$pj" 2>/dev/null; then
-          local ver
-          ver=$(grep -oE '"nx"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj" | head -1 | sed -E 's/.*"([^"]+)"$/\1/')
-          printf '%s\t%s\n' "$pj" "$ver"
-        fi
-      done
-    done
+# --- Claude Code settings risk flags ---
+# Prints space-separated flags for risky settings in a Claude Code settings file
+# (current schema: permissions.allow / permissions.defaultMode, env, hooks):
+#   bypass     permissions.defaultMode == "bypassPermissions"
+#   bashall    permissions.allow grants every Bash command ("Bash", "Bash(*)", "Bash(:*)")
+#   baseurl    env.ANTHROPIC_BASE_URL set (API traffic, including the key, goes elsewhere)
+#   allmcp     enableAllProjectMcpServers: true (every repo .mcp.json server auto-approved)
+#   keyhelper  apiKeyHelper set (a command run to obtain the API key)
+#   hooks      hooks defined
+#   legacy     legacy alwaysAllow / allowedTools keys
+claude_settings_flags() {
+  local f="$1"
+  [[ -r "$f" ]] || return 0
+  if [[ "$HAS_JQ" -eq 1 ]] && jq empty "$f" >/dev/null 2>&1; then
+    jq -r '[
+      (if .permissions.defaultMode? == "bypassPermissions" then "bypass" else empty end),
+      (if ([.permissions.allow? // [] | .[] | strings
+            | select(. == "Bash" or . == "Bash(*)" or . == "Bash(:*)")] | length) > 0
+       then "bashall" else empty end),
+      (if .env.ANTHROPIC_BASE_URL? then "baseurl" else empty end),
+      (if .enableAllProjectMcpServers? == true then "allmcp" else empty end),
+      (if .apiKeyHelper? then "keyhelper" else empty end),
+      (if .hooks? and (.hooks | length) > 0 then "hooks" else empty end),
+      (if has("alwaysAllow") or has("allowedTools") then "legacy" else empty end)
+    ] | join(" ")' "$f" 2>/dev/null
+    return 0
   fi
-}
-
-# Compromised Nx version range check (s1ngularity attack August 2025)
-is_nx_compromised_version() {
-  local v="$1"
-  # Strip ^/~/= prefixes
-  v="${v#^}"; v="${v#~}"; v="${v#=}"
-  # Compromised: 20.9.0 - 21.8.0
-  case "$v" in
-    20.9.0|20.10.0|20.11.0|20.12.0|21.5.0|21.6.0|21.7.0|21.8.0) return 0 ;;
-    *) return 1 ;;
-  esac
+  local out=""
+  grep -qE '"defaultMode"[[:space:]]*:[[:space:]]*"bypassPermissions"' "$f" && out="$out bypass"
+  grep -qE '"Bash(\(:?\*\))?"' "$f" && out="$out bashall"
+  grep -q '"ANTHROPIC_BASE_URL"' "$f" && out="$out baseurl"
+  grep -qE '"enableAllProjectMcpServers"[[:space:]]*:[[:space:]]*true' "$f" && out="$out allmcp"
+  grep -q '"apiKeyHelper"' "$f" && out="$out keyhelper"
+  grep -q '"hooks"' "$f" && out="$out hooks"
+  grep -qE '"(alwaysAllow|allowedTools)"' "$f" && out="$out legacy"
+  printf '%s' "${out# }"
 }
 
 # --- Untrusted content ---
@@ -237,9 +243,9 @@ untrusted_snippet() {
 DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
 export DEV_SEARCH_PATHS
 
-export -f has json_escape emit_finding untrusted_text untrusted_snippet file_perm_octal file_mtime_unix \
+export -f has json_escape emit_finding untrusted_text untrusted_snippet claude_settings_flags file_perm_octal file_mtime_unix \
           count_matches count_pattern_matches json_decode_field \
-          ssh_key_has_passphrase find_nx_versions is_nx_compromised_version \
+          ssh_key_has_passphrase \
           log warn err
 
 # Secret patterns and redaction, needed by emit_finding. secrets.sh does not source

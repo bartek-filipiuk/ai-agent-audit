@@ -10,9 +10,11 @@ log "$MODULE" "Starting sandbox/isolation audit..."
 
 # Detect if running in a container / VM
 in_container=0
-if [[ -f /.dockerenv ]] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+# /proc/1/cgroup no longer names docker under cgroup v2; /run/.containerenv (podman) and
+# $container (systemd-nspawn, toolbox, distrobox) cover the rest.
+if [[ -f /.dockerenv || -f /run/.containerenv || -n "${container:-}" ]] || grep -q docker /proc/1/cgroup 2>/dev/null; then
   in_container=1
-  emit_finding "$MODULE" "INFO" "F.container" "Running inside Docker container" "" "" ""
+  emit_finding "$MODULE" "INFO" "F.container" "Running inside a container" "" "" ""
 fi
 if [[ -n "${CODESPACES:-}" || -n "${REMOTE_CONTAINERS_IPC:-}" ]]; then
   in_container=1
@@ -21,6 +23,7 @@ fi
 
 # WSL on Linux
 if [[ "$OS" == "linux" && -n "${WSL_DISTRO_NAME:-}" ]]; then
+  in_container=1
   emit_finding "$MODULE" "INFO" "F.wsl" "Running in WSL ($WSL_DISTRO_NAME)" "" "" ""
 fi
 
@@ -54,7 +57,13 @@ done
 
 # sudo cache state
 if has sudo; then
-  if sudo -n true 2>/dev/null; then
+  if sudo -ln 2>/dev/null | grep -qE 'NOPASSWD:[[:space:]]*ALL'; then
+    emit_finding "$MODULE" "HIGH" "F.sudo.nopasswd" \
+      "Passwordless sudo for all commands (NOPASSWD: ALL)" \
+      "Any process running as this user, including an AI agent with shell access, is effectively root at all times." \
+      "Remove NOPASSWD: ALL from /etc/sudoers or /etc/sudoers.d/* (sudo visudo). Keep NOPASSWD only for specific commands if you need it." \
+      ""
+  elif sudo -n true 2>/dev/null; then
     emit_finding "$MODULE" "HIGH" "F.sudocache" \
       "Sudo password is currently cached" \
       "Right now, any process running as this user can run sudo without password prompt." \
