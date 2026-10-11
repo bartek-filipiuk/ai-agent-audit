@@ -253,21 +253,23 @@ scan_classify_stdin_to_inventory() {
 
 # Aggregate scan across multiple files (e.g. Claude Code sessions).
 # Renders a single inventory section listing unique fingerprints found across all of them.
+# Prints "<distinct secrets> <files with at least one secret>" — one pass over the files,
+# which matters on hundreds of MB of transcripts.
 # Args: <label> <subtitle_or_empty> <file...>
 scan_classify_files_aggregated() {
   local label="$1" subtitle="$2"; shift 2
   local files=("$@")
   local merged; merged=$(_secrets_mktemp)
 
-  local f
+  local f leaky=0
   for f in "${files[@]}"; do
     [[ -r "$f" ]] || continue
-    grep -hoE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null >> "$merged" || true
+    grep -hoE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null >> "$merged" && leaky=$((leaky+1))
   done
 
   if [[ ! -s "$merged" ]]; then
     rm -f "$merged"
-    printf '0'
+    printf '0 0'
     return
   fi
 
@@ -299,7 +301,7 @@ scan_classify_files_aggregated() {
 
   if [[ "$total" -eq 0 ]]; then
     rm -f "$tmp_table"
-    printf '0'
+    printf '0 0'
     return
   fi
 
@@ -314,7 +316,7 @@ scan_classify_files_aggregated() {
   } >> "$SECRETS_INVENTORY"
 
   rm -f "$tmp_table"
-  printf '%s' "$total"
+  printf '%s %s' "$total" "$leaky"
 }
 
 # Inventory rows as "type<TAB>service<TAB>rotate<TAB>severity<TAB>fingerprint", one line per

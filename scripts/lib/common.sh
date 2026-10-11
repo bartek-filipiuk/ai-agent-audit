@@ -189,8 +189,10 @@ ssh_key_has_passphrase() {
 INJECTION_RE='ignore (all )?(previous|prior|above|earlier) (instructions?|rules|context)|disregard (the )?(above|earlier|prior) (rules|instructions|context)|new instructions:|you are now (a|an|the) '
 # Instructions that switch off human confirmation. Bounded: "never skip code review" is fine.
 BYPASS_RE='(skip|bypass|disable)[[:space:]]+(the[[:space:]]+|all[[:space:]]+|any[[:space:]]+)?(user[[:space:]]+)?(confirmations?|approvals?|permission( prompts?|s)?|safety( checks?| prompts?)?)'
-# Exfiltration / covert-action wording in skills.
-EXFIL_RE='exfiltrat|without (telling|notifying|asking)( the user)?'
+# Covert-action wording in skills: an instruction to keep the user in the dark. Bare
+# "exfiltrate" or "without asking" fired on threat descriptions and on safety rules such
+# as "never run --force without asking", so both need the explicit "the user" object.
+EXFIL_RE='without (telling|notifying|informing|asking) the user|do not (tell|inform|notify) the user|hide (this|it) from the user'
 # Download piped into a shell or interpreter, or dropped into /tmp.
 NETEXEC_RE='(curl|wget|nc)[[:space:]][^|]*\|[[:space:]]*(sudo[[:space:]]+)?((ba|z|da)?sh|python3?)([[:space:];]|$)|(curl|wget)[[:space:]].*>[[:space:]]*/tmp/'
 # Zero-width / bidi-control characters as UTF-8 bytes (use with LC_ALL=C grep -E):

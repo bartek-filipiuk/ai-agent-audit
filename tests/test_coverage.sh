@@ -21,6 +21,10 @@ printf 'Never skip code review. Family: \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91
 mkdir -p "$HOME/.claude/plugins/cache/mp/plug/1.0/hooks"
 printf '{"hooks": {}}\n' > "$HOME/.claude/plugins/cache/mp/plug/1.0/hooks/hooks.json"
 
+# Plain "Always allow" list (what Claude Code writes per project) is not a risky config.
+mkdir -p "$P/allowonly/.git" "$P/allowonly/.claude"
+printf '{"permissions": {"allow": ["Bash(npm test:*)", "WebFetch(domain:docs.example.com)"]}}\n' > "$P/allowonly/.claude/settings.local.json"
+
 # ---------- L: skills enumerated by SKILL.md, nested in plugins ----------
 mkdir -p "$HOME/.claude/skills/good" "$HOME/.claude/plugins/marketplaces/m/plugins/p/skills/deep" "$HOME/.claude/plugins/repos/empty"
 printf -- '---\nname: good\n---\nRuns tests. Fails silently when offline.\n' > "$HOME/.claude/skills/good/SKILL.md"
@@ -73,8 +77,10 @@ assert_grep '"id":"K.3.injection","title":"[^"]*agents/review.md' "$OUT/findings
 assert_grep '"id":"K.3.hidden","title":"[^"]*k2/CLAUDE.md' "$OUT/findings/K.jsonl"
 assert_not_grep '"id":"K.3[^"]*","title":"[^"]*k2/AGENTS.md' "$OUT/findings/K.jsonl" "emoji ZWJ and 'never skip code review' are clean"
 assert_finding K K.1.plugin.hooks
+assert_not_grep '"id":"K.2.risky","title":"[^"]*allowonly' "$OUT/findings/K.jsonl" "specific allow rules are not risky"
 # L
 assert_grep '"title":"Inventory: 2 agent skill' "$OUT/findings/L.jsonl" "two SKILL.md files = two skills"
+assert_eq 1 "$(grep -c '"id":"L.1.recent"' "$OUT/findings/L.jsonl")" "recent skills aggregated into one finding"
 assert_grep '"id":"L.2.netexec","title":"[^"]*deep' "$OUT/findings/L.jsonl"
 assert_no_finding L L.2.bypass
 # J

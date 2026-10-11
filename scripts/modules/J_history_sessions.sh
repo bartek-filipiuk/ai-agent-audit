@@ -54,12 +54,9 @@ scan_store() {
       "Older files in $dir were not checked for secrets." \
       "Delete transcripts you no longer need, or grep the rest yourself: grep -lE '<pattern>' -r \"$dir\"." ""
   fi
-  local cnt leaky=0
-  cnt=$(scan_classify_files_aggregated "$label" "Newest ${#scan[@]} of ${#all[@]} file(s) under $dir." "${scan[@]}")
+  local cnt leaky
+  read -r cnt leaky < <(scan_classify_files_aggregated "$label" "Newest ${#scan[@]} of ${#all[@]} file(s) under $dir." "${scan[@]}")
   [[ "${cnt:-0}" -gt 0 ]] || return 0
-  for f in "${scan[@]}"; do
-    grep -qE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null && leaky=$((leaky+1))
-  done
   emit_finding "$MODULE" "$sev" "$id" \
     "$label: $leaky file(s) contain $cnt distinct classified secret(s)" \
     "Under $dir. Plaintext, readable by any process running as this user — including the next agent session. See $SECRETS_INVENTORY for the classified list." \

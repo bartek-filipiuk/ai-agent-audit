@@ -84,9 +84,18 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
     [[ -z "$found" ]] && continue
     repo_cfg_total=$((repo_cfg_total+1))
 
-    # Executable or trust-widening content: hooks/commands, permission allow-lists and
-    # bypass mode, env overrides (ANTHROPIC_BASE_URL = token exfil), apiKeyHelper, auto-approved MCP.
-    if [[ -f "$found" ]] && grep -qE '"hooks"|"command"[[:space:]]*:|allowedTools|alwaysAllow|"allow"[[:space:]]*:|bypassPermissions|"env"[[:space:]]*:|apiKeyHelper|enableAllProjectMcpServers' "$found" 2>/dev/null; then
+    # Executable or trust-widening content. Claude Code settings are judged by their risk
+    # flags (hooks, bypass mode, Bash allow-all, ANTHROPIC_BASE_URL, apiKeyHelper,
+    # auto-approved MCP): a plain allow-list of specific commands is what "Always allow"
+    # writes into every project's settings.local.json and is not, by itself, a risk.
+    risky=0
+    case "$found" in
+      */.claude/settings.json|*/.claude/settings.local.json)
+        [[ -n "$(claude_settings_flags "$found")" ]] && risky=1 ;;
+      *)
+        grep -qE '"hooks"|"command"[[:space:]]*:|allowedTools|alwaysAllow' "$found" 2>/dev/null && risky=1 ;;
+    esac
+    if [[ "$risky" -eq 1 ]]; then
       risky_paths+=("$found")
     else
       plain_paths+=("$found")

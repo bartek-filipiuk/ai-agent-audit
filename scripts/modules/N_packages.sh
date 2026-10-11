@@ -49,6 +49,9 @@ resolved_versions() {
       | head -1 | sed -E 's/.*"([^"]+)"$/\1/'
   fi
   [[ -f "$dir/package-lock.json" ]] || return 0
+  # Cheap fixed-string check first: running jq on every lockfile for every IOC row was
+  # the slowest part of the module on real workspaces.
+  grep -qF "node_modules/$pkg\"" "$dir/package-lock.json" 2>/dev/null || return 0
   if [[ "$HAS_JQ" -eq 1 ]]; then
     jq -r --arg p "$pkg" '.packages // {} | to_entries[]
       | select(.key == "node_modules/" + $p or (.key | endswith("/node_modules/" + $p)))

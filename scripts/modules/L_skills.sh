@@ -37,6 +37,7 @@ done
 
 total_skills=0
 recent_skills=0
+recent_list=()
 
 for d in "${SKILL_DIRS[@]}"; do
   [[ -d "$d" ]] || continue
@@ -59,11 +60,7 @@ for d in "${SKILL_DIRS[@]}"; do
 
     if [[ "$age_days" -ge 0 && "$age_days" -lt 30 ]]; then
       recent_skills=$((recent_skills+1))
-      emit_finding "$MODULE" "MEDIUM" "L.1.recent" \
-        "Recently installed agent skill: $skill_name (age: $age_days day(s))" \
-        "Path: $skill_dir. Recent installs from third-party marketplaces are a known attack vector — ClawHub publishers can be 1-week-old GitHub accounts." \
-        "Verify the source of this skill: does it come from Anthropic/official sources, or a third-party marketplace? If untrusted: rm -rf \"$skill_dir\". For trusted skills, pin to a specific version or commit." \
-        "Snyk ToxicSkills (Feb 2026) — 30+ malicious skills tracked on ClawHub since launch"
+      recent_list+=("$skill_dir ($age_days d)")
     fi
 
     # Zero-width / bidi chars (shared pattern; U+200D emoji joiner excluded)
@@ -95,6 +92,16 @@ for d in "${SKILL_DIRS[@]}"; do
     fi
   done < <(find "$d" -name 'SKILL.md' -type f -not -path '*/node_modules/*' 2>/dev/null)
 done
+
+# One aggregated finding: plugin updates refresh whole skill trees, so one finding per
+# skill turned every marketplace update into dozens of MEDIUMs.
+if [[ "$recent_skills" -gt 0 ]]; then
+  emit_finding "$MODULE" "MEDIUM" "L.1.recent" \
+    "$recent_skills agent skill(s) installed or updated in the last 30 days" \
+    "Most recent first-seen paths:"$'\n'"$(printf -- '- %s\n' "${recent_list[@]}" | head -15)" \
+    "For each skill you did not knowingly install or update: check where it came from (Anthropic / official marketplace vs third party) and read its SKILL.md. Remove anything untrusted with rm -rf <skill dir>; pin trusted third-party skills to a commit." \
+    "Snyk ToxicSkills (Feb 2026) — 30+ malicious skills tracked on ClawHub since launch"
+fi
 
 # Summary
 if [[ "$total_skills" -gt 0 ]]; then
