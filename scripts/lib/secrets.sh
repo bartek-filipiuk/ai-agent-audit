@@ -53,6 +53,7 @@ SECRET_PATTERNS=(
   'sk-[A-Za-z0-9]{48}|||OpenAI Legacy Key (or generic sk-)|||platform.openai.com (likely)|||platform.openai.com → API keys → Revoke (verify provider first)|||MEDIUM'
   'hf_[A-Za-z0-9]{30,}|||HuggingFace Access Token|||huggingface.co|||huggingface.co → Settings → Access Tokens → Revoke|||HIGH'
   'r8_[A-Za-z0-9]{30,}|||Replicate API Token|||replicate.com|||replicate.com → Account → API tokens → Revoke|||HIGH'
+  'ctx7sk-[A-Za-z0-9-]{20,}|||Context7 API Key|||context7.com|||context7.com → Dashboard → API keys → Revoke|||HIGH'
 
   # --- Stripe ---
   'sk_live_[A-Za-z0-9]{20,}|||Stripe LIVE Secret Key|||dashboard.stripe.com (PRODUCTION)|||dashboard.stripe.com → Developers → API keys → Roll key (URGENT)|||CRITICAL'
@@ -210,10 +211,10 @@ scan_classify_to_inventory() {
     while IFS= read -r match; do
       [[ -z "$match" ]] && continue
       fp=$(redact_fingerprint "$match")
-      # Escape pipes in fields (rare but possible in DB URLs).
-      local t_esc="${type_label//|/\\|}"
-      local s_esc="${service//|/\\|}"
-      local r_esc="${rotate//|/\\|}"
+      # Cells are split on raw '|' by every reader; replace rather than escape it.
+      local t_esc="${type_label//|//}"
+      local s_esc="${service//|//}"
+      local r_esc="${rotate//|//}"
       printf '| %s | %s | %s | %s | `%s` |\n' "$t_esc" "$s_esc" "$r_esc" "$sev" "$fp" >> "$tmp"
       total=$((total+1))
     done <<<"$matches"
@@ -289,7 +290,7 @@ scan_classify_files_aggregated() {
     while IFS= read -r match; do
       [[ -z "$match" ]] && continue
       fp=$(redact_fingerprint "$match")
-      printf '| %s | %s | %s | %s | `%s` |\n' "$type_label" "$service" "$rotate" "$sev" "$fp" >> "$tmp_table"
+      printf '| %s | %s | %s | %s | `%s` |\n' "${type_label//|//}" "${service//|//}" "${rotate//|//}" "$sev" "$fp" >> "$tmp_table"
       total=$((total+1))
     done <<<"$matches"
   done
@@ -316,6 +317,28 @@ scan_classify_files_aggregated() {
   printf '%s' "$total"
 }
 
+# Inventory rows as "type<TAB>service<TAB>rotate<TAB>severity<TAB>fingerprint", one line per
+# occurrence (the same key found in two sources appears twice).
+inventory_rows() {
+  [[ -f "$SECRETS_INVENTORY" ]] || return 0
+  awk -F'|' '
+    /^\| Type / || /^\|[ ]*-/ { next }
+    /^\|/ {
+      n = split($0, a, /\|/)
+      if (n < 6) next
+      for (i = 2; i <= 6; i++) gsub(/^ +| +$/, "", a[i])
+      gsub(/^`|`$/, "", a[6])
+      if (a[2] == "" || a[2] == "Type") next
+      print a[2] "\t" a[3] "\t" a[4] "\t" a[5] "\t" a[6]
+    }' "$SECRETS_INVENTORY"
+}
+
+# Distinct keys (type + fingerprint) — what the score and the headline count.
+secrets_distinct_count()   { inventory_rows | cut -f1,5 | sort -u | grep -c . || true; }
+# Every row, i.e. occurrences across sources.
+secrets_occurrence_count() { inventory_rows | grep -c . || true; }
+
+export -f inventory_rows secrets_distinct_count secrets_occurrence_count
 export -f _secrets_mktemp _fp_sanitize redact_fingerprint redact_secrets_in_text classify_secret_match \
           ensure_secrets_inventory_header \
           scan_classify_to_inventory scan_classify_stdin_to_inventory \

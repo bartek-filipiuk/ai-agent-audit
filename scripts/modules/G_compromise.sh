@@ -69,11 +69,7 @@ fi
 # Compare modification times — anything modified recently that wasn't expected
 for rc in "${SHELL_RC_FILES[@]}"; do
   [[ -f "$rc" ]] || continue
-  if [[ "$OS" == "macos" ]]; then
-    mtime=$(stat -f '%m' "$rc" 2>/dev/null)
-  else
-    mtime=$(stat -c '%Y' "$rc" 2>/dev/null)
-  fi
+  mtime=$(file_mtime_unix "$rc")
   now=$(date +%s)
   age_days=$(( (now - mtime) / 86400 ))
   if [[ "$age_days" -lt 30 ]]; then

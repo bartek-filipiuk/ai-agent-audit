@@ -52,24 +52,10 @@ generate_action_plan() {
       echo
       echo "| Service / Type | Count | Severity hint | Where to rotate |"
       echo "|----------------|------:|---------------|-----------------|"
-      awk -F'|' '
-        /^\| Type / { next }
-        /^\|[ ]*-/ { next }
-        /^\|/ {
-          n=split($0, a, /\|/)
-          if (n < 6) next
-          type=a[2];    gsub(/^ +| +$/, "", type)
-          service=a[3]; gsub(/^ +| +$/, "", service)
-          rotate=a[4];  gsub(/^ +| +$/, "", rotate)
-          sev=a[5];     gsub(/^ +| +$/, "", sev)
-          if (type == "Type" || type == "") next
-          key=type "|" service "|" rotate "|" sev
-          counts[key]++
-        }
-        END {
-          for (k in counts) printf("%d\t%s\n", counts[k], k)
-        }
-      ' "$SECRETS_INVENTORY" | sort -k1,1 -nr | awk -F'\t' '
+      inventory_rows | sort -u | awk -F'\t' '
+        { counts[$1 "|" $2 "|" $3 "|" $4]++ }
+        END { for (k in counts) printf("%d\t%s\n", counts[k], k) }
+      ' | sort -k1,1 -nr | awk -F'\t' '
         {
           n=$1
           split($2, a, /\|/)
@@ -88,7 +74,6 @@ generate_action_plan() {
 
       awk -F'|' '
         /^## Source: / {
-          if (current != "") print "" > "/dev/stderr"
           sub(/^## Source: */, "")
           gsub(/^[ \t]+|[ \t]+$/, "")
           current=$0
@@ -224,7 +209,9 @@ _action_plan_render_findings_condensed() {
       # Take first line and cap at 200 chars (avoid `awk -F'. '` — its regex separator
       # explodes on any char-space pair, mangling lines like "Pin versions" → "Pi").
       local short
-      short=$(printf '%s' "$remed" | head -n 1 | cut -c 1-200)
+      # Bash slicing counts characters; cut -c counts bytes and splits "→" in half.
+      short=${remed%%$'\n'*}
+      short=${short:0:200}
       # Use printf -- to stop option parsing; remediation can start with `-`.
       printf -- '- **%s** — %s _(`[%s.%s]`)_\n' "$title" "$short" "$module_letter" "$id"
     done < "$f"

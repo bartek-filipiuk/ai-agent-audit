@@ -129,24 +129,11 @@ _html_render_findings_for_sev() {
 # Output is a sequence of <tr> rows for the summary table.
 _html_secrets_summary_rows() {
   [[ -f "$SECRETS_INVENTORY" ]] || return
-  awk -F'|' '
-    /^\| Type / { next }
-    /^\|[ ]*-/ { next }
-    /^\|/ {
-      n = split($0, a, /\|/)
-      if (n < 6) next
-      type=a[2];    gsub(/^ +| +$/, "", type)
-      service=a[3]; gsub(/^ +| +$/, "", service)
-      rotate=a[4];  gsub(/^ +| +$/, "", rotate)
-      sev=a[5];     gsub(/^ +| +$/, "", sev)
-      if (type == "Type" || type == "") next
-      key=type "|" service "|" rotate "|" sev
-      counts[key]++
-    }
-    END {
-      for (k in counts) printf("%d\t%s\n", counts[k], k)
-    }
-  ' "$SECRETS_INVENTORY" | sort -k1,1 -nr | awk -F'\t' '
+  # Distinct keys per type (the same key in several sources counts once).
+  inventory_rows | sort -u | awk -F'\t' '
+    { counts[$1 "|" $2 "|" $3 "|" $4]++ }
+    END { for (k in counts) printf("%d\t%s\n", counts[k], k) }
+  ' | sort -k1,1 -nr | awk -F'\t' '
     {
       n=$1
       split($2, a, /\|/)
@@ -220,15 +207,8 @@ generate_html_report() {
   total=$((crit + high + med + low + info))
 
   # Distinct classified secrets count (table rows in inventory minus header rows)
-  local secrets=0
-  if [[ -f "$SECRETS_INVENTORY" ]]; then
-    secrets=$(grep -cE '^\| [A-Za-z]' "$SECRETS_INVENTORY" 2>/dev/null) || secrets=0
-    # Subtract one header row per "## Source:" block
-    local source_blocks
-    source_blocks=$(grep -c '^## Source:' "$SECRETS_INVENTORY" 2>/dev/null) || source_blocks=0
-    secrets=$((secrets - source_blocks))
-    [[ $secrets -lt 0 ]] && secrets=0
-  fi
+  local secrets
+  secrets=$(secrets_distinct_count)
 
   # Prefer values pre-computed by aggregate.sh (single source of truth — includes
   # compound penalty). Fallback to self-compute if generate_html_report runs

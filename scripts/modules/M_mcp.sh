@@ -59,6 +59,14 @@ for cfg in "${MCP_CONFIGS[@]}"; do
 
   emit_finding "$MODULE" "INFO" "M.1.found" "MCP config: $cfg" "" "" ""
 
+  perms=$(file_perm_octal "$cfg")
+  if [[ -n "$perms" && "$perms" != "600" && "$perms" != "400" ]]; then
+    emit_finding "$MODULE" "MEDIUM" "M.1.perm" \
+      "MCP config readable by other users: $cfg ($perms)" \
+      "MCP configs often carry API keys in env blocks or args." \
+      "chmod 600 \"$cfg\"" ""
+  fi
+
   # Inventory each server as parallel arrays (names can repeat across project scopes).
   # Two extraction paths: jq (preferred) or a grep heuristic fallback.
   srv_scope=(); srv_names=(); srv_type=(); srv_cmd=(); srv_args=(); srv_url=()
@@ -197,12 +205,26 @@ for cfg in "${MCP_CONFIGS[@]}"; do
     esac
   done
 
-  # Plaintext secrets per server (extra check vs module B which only flagged file-level)
-  if grep -qE '"(api[_-]?key|token|password|secret|auth|bearer)"\s*:\s*"[A-Za-z0-9_\-\.]{16,}"' "$cfg" 2>/dev/null; then
+  # Plaintext secrets: known token formats by value (full SECRET_PATTERNS set, inventoried
+  # as fingerprints), plus two structural signs for formats the set does not know —
+  # a *_KEY / *_TOKEN / *_SECRET / *_PASSWORD env entry with a literal value, and a
+  # --api-key / --token style flag followed by a literal in args. "${VAR}" references
+  # are not literals and do not count.
+  known=$(scan_classify_to_inventory "$cfg" "Agent / MCP config: $cfg")
+  structural=""
+  grep -qiE '"[A-Z0-9_]*(KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*"[[:space:]]*:[[:space:]]*"[^"$]{8,}"' "$cfg" 2>/dev/null \
+    && structural="literal value under a *_KEY / *_TOKEN / *_SECRET / *_PASSWORD key"
+  if grep -qiE -- '--(api[-_]?key|token|access[-_]token|auth[-_]token|password|secret)(=|"[[:space:]]*,[[:space:]]*"|[[:space:]]+)[^$"[:space:]-][^"[:space:]]{7,}' "$cfg" 2>/dev/null; then
+    structural="${structural:+$structural; }secret passed as a command-line flag in args (visible in ps output too)"
+  fi
+  if [[ "${known:-0}" -gt 0 || -n "$structural" ]]; then
+    detail=""
+    [[ "${known:-0}" -gt 0 ]] && detail="$known known-format secret(s), fingerprints in $SECRETS_INVENTORY"
+    [[ -n "$structural" ]] && detail="${detail:+$detail. }Also: $structural"
     emit_finding "$MODULE" "HIGH" "M.3.plaintext_secrets" \
-      "MCP config contains plaintext secret(s): $cfg" \
-      "Per-server env values are picked up by the launcher and inherited by every tool the server exposes." \
-      "Migrate secrets to env-var injection from the host shell (set in shell rc gated to specific apps), or use a secrets manager (1Password CLI / Infisical) and reference via shell substitution at launch time." \
+      "MCP / agent config contains plaintext secret(s): $cfg" \
+      "$detail. Per-server env values and args are inherited by every tool the server exposes, and the file is readable by any process running as you." \
+      "Move secrets out of the file: reference environment variables (\"\${GITHUB_TOKEN}\" in Claude Code / Cursor configs) set from a secrets manager (1Password CLI, Infisical, pass). Rotate any credential that has been in the file." \
       "Trend Micro 2025 — 24,000+ secrets leaked via MCP configs on public GitHub"
   fi
 done

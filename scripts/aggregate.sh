@@ -38,13 +38,9 @@ INFO=$(count_sev "INFO")
 TOTAL=$((CRIT + HIGH + MED + LOW + INFO))
 
 # Distinct classified secrets count (rows in inventory minus per-source headers)
-SECRETS_DISTINCT=0
-if [[ -f "$SECRETS_INVENTORY" ]]; then
-  SECRETS_DISTINCT=$(grep -cE '^\| [A-Za-z]' "$SECRETS_INVENTORY" 2>/dev/null) || SECRETS_DISTINCT=0
-  SRC_BLOCKS=$(grep -c '^## Source:' "$SECRETS_INVENTORY" 2>/dev/null) || SRC_BLOCKS=0
-  SECRETS_DISTINCT=$((SECRETS_DISTINCT - SRC_BLOCKS))
-  [[ $SECRETS_DISTINCT -lt 0 ]] && SECRETS_DISTINCT=0
-fi
+# The same key found in bash history and in a session is one secret to rotate, not two.
+SECRETS_DISTINCT=$(secrets_distinct_count)
+SECRETS_OCCURRENCES=$(secrets_occurrence_count)
 
 # Compound risk — "this host is a supply-chain distributor".
 # Triggered when MCP is launched via unpinned npx AND the host holds
@@ -68,28 +64,15 @@ GRADE_LABEL="${GRADE_TSV##*$'\t'}"
 # Each entry: { type, service, rotate_url, severity_hint, count, fingerprints[] }
 build_secrets_summary_json() {
   [[ -f "$SECRETS_INVENTORY" ]] || { printf '[]'; return; }
-  awk -F'|' '
-    /^\| Type / { next }
-    /^\|[ ]*-/ { next }
-    /^\|/ {
-      n = split($0, a, /\|/)
-      if (n < 6) next
-      type=a[2];    gsub(/^ +| +$/, "", type)
-      service=a[3]; gsub(/^ +| +$/, "", service)
-      rotate=a[4];  gsub(/^ +| +$/, "", rotate)
-      sev=a[5];     gsub(/^ +| +$/, "", sev)
-      fp=a[6];      gsub(/^ +| +$/, "", fp)
-      gsub(/^`|`$/, "", fp)
-      if (type == "Type" || type == "") next
-      key = type "\t" service "\t" rotate "\t" sev
+  # Distinct (type, service, rotate, severity, fingerprint) rows, grouped per type.
+  inventory_rows | sort -u | awk -F'\t' '
+    {
+      key = $1 "\t" $2 "\t" $3 "\t" $4
       counts[key]++
-      if (fps[key] == "") fps[key] = fp
-      else                fps[key] = fps[key] "\v" fp
+      fps[key] = (fps[key] == "") ? $5 : fps[key] "\v" $5
     }
-    END {
-      for (k in counts) printf("%d\t%s\t%s\n", counts[k], k, fps[k])
-    }
-  ' "$SECRETS_INVENTORY" | sort -k1,1 -nr | awk -F'\t' '
+    END { for (k in counts) printf("%d\t%s\t%s\n", counts[k], k, fps[k]) }
+  ' | sort -k1,1 -nr | awk -F'\t' '
     function jesc(s) {
       # awk gsub: source "\\\\\\\\" → runtime "\\\\" → replacement = 2 literal backslashes
       gsub(/\\/, "\\\\\\\\", s)
@@ -131,7 +114,8 @@ build_secrets_summary_json() {
   printf '    "medium": %d,\n' "$MED"
   printf '    "low": %d,\n' "$LOW"
   printf '    "info": %d,\n' "$INFO"
-  printf '    "secrets_distinct": %d\n' "$SECRETS_DISTINCT"
+  printf '    "secrets_distinct": %d,\n' "$SECRETS_DISTINCT"
+  printf '    "secrets_occurrences": %d\n' "$SECRETS_OCCURRENCES"
   printf '  },\n'
   printf '  "secrets_inventory_summary": '
   build_secrets_summary_json

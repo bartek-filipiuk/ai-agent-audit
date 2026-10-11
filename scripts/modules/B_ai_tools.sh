@@ -28,7 +28,6 @@ fi
 
 # Cursor app (GUI)
 if [[ -d "/Applications/Cursor.app" ]] || [[ -d "$HOME/.cursor" ]] || [[ -d "$HOME/.config/Cursor" ]]; then
-  installed_tools+=("Cursor IDE")
   emit_finding "$MODULE" "INFO" "B.1.cursor.app" "Cursor IDE installed" "" "" ""
 fi
 
@@ -59,45 +58,7 @@ for rc in "${SHELL_RC_FILES[@]}"; do
   fi
 done
 
-# ---------- B.3: MCP server configurations ----------
-MCP_CONFIGS=(
-  "$HOME/.cursor/mcp.json"
-  "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-  "$HOME/.config/Claude/claude_desktop_config.json"
-  "$HOME/.config/claude/mcp.json"
-  "$HOME/.codeium/windsurf/mcp_config.json"
-)
-
-for cfg in "${MCP_CONFIGS[@]}"; do
-  [[ -f "$cfg" ]] || continue
-  emit_finding "$MODULE" "INFO" "B.3.found" "MCP config found: $cfg" "" "" ""
-
-  # Check perms
-  perms=$(file_perm_octal "$cfg")
-  if [[ -n "$perms" && "$perms" != "600" && "$perms" != "400" ]]; then
-    emit_finding "$MODULE" "MEDIUM" "B.3.perm" \
-      "MCP config has loose permissions: $cfg ($perms)" \
-      "" "chmod 600 \"$cfg\"" ""
-  fi
-
-  # Detect plaintext secrets (heuristic — common patterns)
-  if grep -qE '"(api[_-]?key|token|password|secret|auth)"\s*:\s*"[A-Za-z0-9_\-\.]{16,}"' "$cfg" 2>/dev/null; then
-    emit_finding "$MODULE" "HIGH" "B.3.secrets" \
-      "MCP config contains plaintext secrets: $cfg" \
-      "Detected key/token/password patterns. Trend Micro found 48% of MCP servers recommend this anti-pattern." \
-      "Migrate to env-var injection at runtime, or use a secrets manager (Infisical, 1Password CLI). Rotate any exposed credentials." \
-      "Trend Micro 2025 study — 24,000+ secrets leaked via MCP configs on public GitHub"
-  fi
-
-  # Detect npx-installed servers (run-on-install risk)
-  if grep -qE '"command"\s*:\s*"npx"' "$cfg" 2>/dev/null; then
-    emit_finding "$MODULE" "MEDIUM" "B.3.npx" \
-      "MCP config uses 'npx' to launch servers: $cfg" \
-      "npx fetches and executes the package on first run — supply chain risk if package is compromised." \
-      "Pin specific versions, or install MCP servers globally with audited versions: npm i -g <pkg>@<version>." \
-      "Nx s1ngularity demonstrated postinstall script abuse"
-  fi
-done
+# MCP configurations (permissions, launchers, plaintext secrets) are audited by module M.
 
 # Rules files (CLAUDE.md, .cursorrules, AGENTS.md, ...) are checked by module K (K.2, K.3).
 # Cursor auto-run state lives in its SQLite state DB, not settings.json; the old
