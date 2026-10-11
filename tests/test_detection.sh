@@ -103,10 +103,12 @@ assert_finding C C.gh.classic
 assert_grep '"title":"2 npm token' "$OUT/findings/C.jsonl"
 # F / I
 assert_finding F F.sudo.nopasswd
-assert_finding F F.wsl
-assert_no_finding F F.bare
-assert_grep '"title":"Firewall active: nftables' "$OUT/findings/I.jsonl"
-assert_no_finding I I.nofw
+if [[ "$(uname -s)" == Linux ]]; then   # WSL, ufw.conf, systemctl: Linux-only checks
+  assert_finding F F.wsl
+  assert_no_finding F F.bare
+  assert_grep '"title":"Firewall active: nftables' "$OUT/findings/I.jsonl"
+  assert_no_finding I I.nofw
+fi
 
 # E: repos are read as files, git is never executed inside them.
 for i in 1 2 3 4 5 6; do

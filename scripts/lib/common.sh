@@ -278,8 +278,16 @@ build_dev_search_paths() {
   fi
   DEV_SEARCH_PATHS=()
   DEV_ROOTS_CAPPED=0
+  # One root per directory, compared by device:inode. On macOS's case-insensitive file
+  # system ~/Projects and ~/projects are the same directory, and a symlinked root is the
+  # same as its target; scanning either twice duplicated every repo-level finding.
+  local -A seen_dir=()
+  local id
   while IFS= read -r p; do
     [[ -z "$p" ]] && continue
+    if [[ "$OS" == "macos" ]]; then id=$(stat -L -f '%d:%i' "$p" 2>/dev/null); else id=$(stat -L -c '%d:%i' "$p" 2>/dev/null); fi
+    [[ -n "$id" && -n "${seen_dir[$id]:-}" ]] && continue
+    [[ -n "$id" ]] && seen_dir[$id]=1
     if [[ "${#DEV_SEARCH_PATHS[@]}" -ge "$DEV_ROOTS_CAP" ]]; then DEV_ROOTS_CAPPED=1; break; fi
     DEV_SEARCH_PATHS+=("$p")
   done < <(

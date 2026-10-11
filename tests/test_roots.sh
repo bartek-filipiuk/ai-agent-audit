@@ -23,6 +23,12 @@ assert_eq "$expected" "$got" "roots: crowded parent collapsed, \$HOME and missin
 
 got=$(AUDIT_DEV_PATHS="$HOME/solo" roots)
 assert_eq "$HOME/solo" "$got" "AUDIT_DEV_PATHS overrides everything"
+
+# The same directory under two names (a symlink here; on macOS also ~/Projects vs
+# ~/projects on a case-insensitive file system) is one root.
+ln -s "$HOME/solo" "$HOME/solo-link"
+got=$(AUDIT_DEV_PATHS="$HOME/solo:$HOME/solo-link" roots)
+assert_eq "$HOME/solo" "$got" "one root per directory (device:inode)"
 unset AUDIT_DIR
 
 run_audit --modules K
