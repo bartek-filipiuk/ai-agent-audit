@@ -5,6 +5,7 @@
 # --- Output dirs ---
 AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
 FINDINGS_DIR="$AUDIT_DIR/findings"
+export AUDIT_DIR FINDINGS_DIR
 mkdir -p "$FINDINGS_DIR"
 
 # --- OS detection ---

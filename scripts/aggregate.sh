@@ -8,7 +8,9 @@
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_AUDIT_DIR_GIVEN="${AUDIT_DIR:-}"
 source "$SCRIPT_DIR/lib/common.sh"
+[[ -z "$_AUDIT_DIR_GIVEN" ]] && warn "AUDIT_DIR not set — aggregating $AUDIT_DIR (run via run-audit.sh to pick the output dir)"
 source "$SCRIPT_DIR/lib/action_plan.sh"
 source "$SCRIPT_DIR/lib/html_report.sh"
 
@@ -20,6 +22,7 @@ ACTION_PLAN="$AUDIT_DIR/action-plan.md"
 
 # All modules ever produced (alphabetical letters used as IDs).
 ALL_MODULES="A B C D E F G H I J K L M N P"
+MODULES_RUN="${MODULES_RUN:-$ALL_MODULES}"
 
 # ---------- Counts by severity ----------
 count_sev() {
@@ -118,6 +121,7 @@ build_secrets_summary_json() {
   printf '{\n'
   printf '  "generated_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '  "host_os": "%s",\n' "$OS"
+  printf '  "modules_run": "%s",\n' "$MODULES_RUN"
   printf '  "score": %d,\n' "$SCORE"
   printf '  "grade": "%s",\n' "$GRADE_LETTER"
   printf '  "grade_label": "%s",\n' "$GRADE_LABEL"

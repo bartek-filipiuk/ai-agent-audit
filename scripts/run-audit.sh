@@ -4,16 +4,24 @@
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/common.sh"
 
-MODULES_TO_RUN="A B C D E F G H I J K L M N P"
+ALL_MODULES="A B C D E F G H I J K L M N P"
+MODULES_TO_RUN="$ALL_MODULES"
 OPEN_HTML=1
+OUTPUT_DIR=""
+
+# Arguments are parsed before common.sh is sourced: common.sh creates the output
+# directory, and it must create the one the user asked for, not the default.
 
 # Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --modules) MODULES_TO_RUN="${2//,/ }"; shift 2 ;;
-    --output)  AUDIT_DIR="$2"; FINDINGS_DIR="$AUDIT_DIR/findings"; mkdir -p "$FINDINGS_DIR"; shift 2 ;;
+    --modules|--output)
+      if [[ $# -lt 2 || -z "$2" ]]; then
+        printf '[ERR] %s needs a value\n' "$1" >&2; exit 1
+      fi
+      if [[ "$1" == "--modules" ]]; then MODULES_TO_RUN="${2//,/ }"; else OUTPUT_DIR="$2"; fi
+      shift 2 ;;
     --no-open) OPEN_HTML=0; shift ;;
     -h|--help)
       cat <<EOF
@@ -49,9 +57,15 @@ By default the HTML report auto-opens via xdg-open / open at the end of the run.
 Pass --no-open to skip that.
 EOF
       exit 0 ;;
-    *) err "Unknown arg: $1"; exit 1 ;;
+    *) printf '[ERR] Unknown arg: %s\n' "$1" >&2; exit 1 ;;
   esac
 done
+
+[[ -n "$OUTPUT_DIR" ]] && AUDIT_DIR="$OUTPUT_DIR"
+AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
+FINDINGS_DIR="$AUDIT_DIR/findings"
+export AUDIT_DIR FINDINGS_DIR
+source "$SCRIPT_DIR/lib/common.sh"
 
 # Map module letter to script
 declare -A MODULE_SCRIPTS=(
@@ -72,7 +86,9 @@ declare -A MODULE_SCRIPTS=(
   [P]="P_macos.sh"
 )
 
-# Reset secrets inventory at the start of each run so it reflects the current scan only.
+# Reset findings and the secrets inventory so the reports reflect this run only.
+# Without this, a --modules run would aggregate stale findings from older runs.
+rm -f "$FINDINGS_DIR"/*.jsonl
 SECRETS_INVENTORY="${AUDIT_DIR}/secrets-inventory.md"
 rm -f "$SECRETS_INVENTORY"
 export SECRETS_INVENTORY
@@ -85,7 +101,13 @@ echo "  Modules: $MODULES_TO_RUN"
 echo "═══════════════════════════════════════════════════════════"
 echo
 
+if [[ "$MODULES_TO_RUN" != "$ALL_MODULES" ]]; then
+  echo "  Partial run: score and reports reflect only modules $MODULES_TO_RUN."
+  echo
+fi
+
 # Run each requested module
+MODULES_RUN=""
 for m in $MODULES_TO_RUN; do
   s="${MODULE_SCRIPTS[$m]:-}"
   if [[ -z "$s" ]]; then
@@ -97,8 +119,10 @@ for m in $MODULES_TO_RUN; do
     warn "Module script missing: $script_path"
     continue
   fi
+  MODULES_RUN="${MODULES_RUN:+$MODULES_RUN }$m"
   bash "$script_path" || warn "Module $m exited with non-zero"
 done
+export MODULES_RUN
 
 # Aggregate
 bash "$SCRIPT_DIR/aggregate.sh"
