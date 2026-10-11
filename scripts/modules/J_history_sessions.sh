@@ -22,7 +22,7 @@ scan_file_and_finding() {
     emit_finding "$MODULE" "$severity" "J.leak" \
       "$label contains $count classified secret(s) — see secrets-inventory.md" \
       "Path: $file. Each detected secret is classified by service and listed with a redacted fingerprint in the inventory file." \
-      "Open the inventory: cat \"$SECRETS_INVENTORY\". For each entry — identify the matching key in your provider UI by fingerprint, rotate it, then clear this source file (history -c && history -w for shells, rm for session JSONL)." \
+      "Open the inventory: cat \"$SECRETS_INVENTORY\". For each entry — identify the matching key in your provider UI by fingerprint and rotate it. Then redact the source with scripts/purge-secrets.sh (dry-run first)." \
       "Credentials in history files are read by Nx-style scanners and any agent that walks \$HOME"
   fi
 }
@@ -68,7 +68,7 @@ if [[ -d "$CC_DIR" ]]; then
     session_count=$(find "$CC_DIR/projects" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')
     emit_finding "$MODULE" "INFO" "J.2.cc.count" \
       "$session_count Claude Code session file(s) on disk" \
-      "Stored at $CC_DIR/projects/<project-hash>/sessions/. JSONL format, plaintext readable by any process." "" ""
+      "Stored at $CC_DIR/projects/<encoded-project-path>/<session-id>.jsonl. Plaintext, readable by any process running as this user." "" ""
 
     # Aggregate scan across recent sessions (cap to keep runtime sane).
     mapfile -t recent_sessions < <(find "$CC_DIR/projects" -name '*.jsonl' -mtime -90 2>/dev/null | head -500)
@@ -86,7 +86,7 @@ if [[ -d "$CC_DIR" ]]; then
         emit_finding "$MODULE" "HIGH" "J.2.cc.leak" \
           "$leaky Claude Code session file(s) (last 90d) contain $cc_count distinct classified secret(s)" \
           "Sessions persist plaintext. Anyone reading \$HOME — including future agent runs that re-load context — sees them. See $SECRETS_INVENTORY for classification." \
-          "Find leaky files: grep -lE '<patterns>' ~/.claude/projects/*/sessions/*.jsonl. Rotate each classified credential. Delete affected session files: rm <file>. Stop pasting secrets into chat — use env vars or vault references." \
+          "Rotate each classified credential first. Then redact them in place with scripts/purge-secrets.sh (dry-run by default, --purge to apply; sessions stay resumable). Stop pasting secrets into chat — use env vars or vault references." \
           "Agent context windows are persistent, not ephemeral"
       fi
     fi

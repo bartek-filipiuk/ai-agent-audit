@@ -53,14 +53,14 @@ jq -r '"\(.score)/100 [\(.grade) — \(.grade_label)]   crit:\(.summary.critical
 # Dry-run — shows what would be removed, makes no changes
 bash scripts/purge-secrets.sh
 
-# Actually delete (creates .bak.<TIMESTAMP> backups before each modification)
+# Redact in place (originals backed up to ~/.ai-agent-audit/purge-backups/<timestamp>/)
 bash scripts/purge-secrets.sh --purge
 
 # Also wipe Cursor SQLite chat storage (opt-in)
 bash scripts/purge-secrets.sh --purge --include-cursor
 ```
 
-The purge script removes lines containing real credentials from `~/.bash_history`, `~/.claude/history.jsonl`, every `~/.claude/projects/*/sessions/*.jsonl`, and Cline state files (`~/.config/Code/User/globalStorage/*cline*/tasks/*/`). It uses the same pattern set as the audit and excludes local docker / loopback database URLs from purge by default (since `postgres://user:pass@localhost/...` is not a real leak). Run rotation in your provider UIs **before** purge — deletion of a leaked-key entry doesn't un-leak the key, only removes the trail.
+The purge script replaces each detected credential with `[REDACTED:<fingerprint>]` in shell histories, `~/.claude/history.jsonl`, every Claude Code session (`~/.claude/projects/*/*.jsonl`), Claude Code file-history snapshots (`~/.claude/file-history/`), Codex history and sessions, and Cline task state. Line count and JSONL structure stay intact, so sessions remain resumable; `--delete-lines` restores the old delete-the-whole-line behaviour. It uses the HIGH/CRITICAL patterns from `lib/secrets.sh` and skips local docker / loopback database URLs (`postgres://user:pass@localhost/...` is not a real leak). Raw PEM private keys are reported by the audit but not purged. Originals are copied to `~/.ai-agent-audit/purge-backups/<timestamp>/` (mode 600) — they contain the secrets, so delete them once you have checked the result, or pass `--no-backup`. Close running agent sessions first, and rotate in your provider UIs **before** purging: redaction removes the trail, it does not un-leak the key.
 
 ## Why this exists
 
@@ -162,7 +162,7 @@ bash scripts/run-audit.sh --help
 | **G** | Nx-style compromise | Compromised Nx versions (20.9.0–21.8.0), `shutdown` injection in shell init, `s1ngularity-repository*` on GitHub, `/tmp/inventory.txt`, suspicious npm `postinstall` scripts |
 | **H** | Browser / password manager | Browser data presence, 1Password / Bitwarden unlock state |
 | **I** | Network egress | Firewall (`ufw`, `firewalld`, `socketfilterfw`), outbound firewall (Little Snitch / LuLu on macOS), `HTTP_PROXY` |
-| **J** | Sessions and history (with classification) | Per-secret classification of `bash` / `zsh` / `fish` / `atuin` / `psql` / `mysql` / `node` / `python` / `sqlite` history; Claude Code session JSONL files (`~/.claude/projects/*/sessions/`); Claude Code global prompt history (`~/.claude/history.jsonl`); Cursor SQLite chat history (`state.vscdb`) and per-workspace storage; Aider input and chat history; Cline state. Each detected match is classified by service and persisted with a redacted fingerprint to `secrets-inventory.md`. |
+| **J** | Sessions and history (with classification) | Per-secret classification of `bash` / `zsh` / `fish` / `atuin` / `psql` / `mysql` / `node` / `python` / `sqlite` history; Claude Code session JSONL files (`~/.claude/projects/*/*.jsonl`); Claude Code global prompt history (`~/.claude/history.jsonl`); Cursor SQLite chat history (`state.vscdb`) and per-workspace storage; Aider input and chat history; Cline state. Each detected match is classified by service and persisted with a redacted fingerprint to `secrets-inventory.md`. |
 | **K** | AI hooks and repo-level configs | Globally-defined Claude Code hooks (`~/.claude/settings.json`); repository-level `.claude/`, `.cursor/`, `.windsurf/`, `.codeium/` configs in workspace; `CLAUDE.md` / `AGENTS.md` / `.cursorrules` scanned for zero-width and bidi-control characters, classic prompt-injection language ("ignore previous instructions"), and explicit safety-bypass instructions |
 | **L** | AI skills supply chain | Inventory of skills and plugins under `~/.claude/skills`, `~/.claude/plugins`, per-project `.claude/skills/`, and Cursor extension dirs; flags recently installed entries (under thirty days), zero-width characters in `SKILL.md`, "skip approval / exfiltrate / silently" patterns, and `curl` or `wget` piped into a shell |
 | **M** | MCP server inventory and risk | Walks every MCP configuration (Claude Desktop, Cursor, Windsurf, Codeium, Cline, per-project `.mcp.json`); for each declared server, classifies the launch method (`npx` unpinned, `npx` pinned, `uvx`, `docker`, local path) and flags supply-chain exposure; per-server plaintext-secret detection separate from module B |

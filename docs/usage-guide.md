@@ -170,7 +170,7 @@ jq '.findings[] | select(.severity == "HIGH" or .severity == "CRITICAL")' \
 
 ## Related utilities
 
-- `scripts/purge-secrets.sh` — remove detected credential lines from history files and AI session storage. Dry-run by default. Pass `--purge` to actually delete (creates `.bak.<TIMESTAMP>` backups). Pass `--include-cursor` to also wipe Cursor SQLite. Note: rotate the secrets in your provider UIs **before** purge — deletion of a leaked-key entry doesn't un-leak the key, only removes the trail.
+- `scripts/purge-secrets.sh` — redact detected credentials in history files and AI session storage, replacing each with `[REDACTED:<fingerprint>]` so sessions stay resumable. Dry-run by default. `--purge` applies it and first copies originals to `~/.ai-agent-audit/purge-backups/<timestamp>/` (they contain the secrets; delete after checking, or pass `--no-backup`). `--delete-lines` removes whole lines instead. `--include-cursor` moves Cursor's SQLite chat storage aside. Rotate the secrets in your provider UIs **before** purging — redaction removes the trail, it does not un-leak the key.
 
 ## Common patterns to watch
 

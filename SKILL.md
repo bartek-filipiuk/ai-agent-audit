@@ -40,7 +40,7 @@ Trigger when the user asks any of:
 | G | Detekcja Nx-style kompromitacji | `npm ls nx` for vulnerable versions, shell init files for `shutdown` injections, `/tmp/inventory.txt`, `s1ngularity-repository*` artifacts, `.zshrc/.bashrc` git diff vs known-good |
 | H | Browser / session hygiene | Active browser logins (heuristic), password manager session state (1Password CLI, Bitwarden) |
 | I | Network egress | Firewall present, DNS resolver config, HTTP(S)_PROXY env vars |
-| J | Historia + AI sessions | Shell history credential leaks (heuristic regex), Claude Code sessions (`~/.claude/projects/*/sessions/*.jsonl`), Cursor SQLite chat history (`state.vscdb`), secrets in past prompts |
+| J | Historia + AI sessions | Shell history credential leaks (heuristic regex), Claude Code sessions (`~/.claude/projects/*/*.jsonl`), Cursor SQLite chat history (`state.vscdb`), secrets in past prompts |
 
 ## Step-by-step instructions
 
