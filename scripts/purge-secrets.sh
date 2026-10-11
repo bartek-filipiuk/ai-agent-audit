@@ -90,7 +90,7 @@ DB_URL_PATTERN='(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqps?)://[A-Za-z0-9.
 LOCAL_HOSTS_RE='@(localhost|127\.0\.0\.[0-9]+|0\.0\.0\.0|::1|host\.docker\.internal|db|postgres|mysql|mongo|redis|host)([:/]|$)'
 
 build_purge_pattern() {
-  local out="" entry pat rest type_label sev
+  local pats=() entry pat rest type_label sev
   for entry in "${SECRET_PATTERNS[@]}"; do
     pat="${entry%%|||*}"; rest="${entry#*|||}"
     type_label="${rest%%|||*}"
@@ -103,11 +103,14 @@ build_purge_pattern() {
     elif [[ "$sev" != "HIGH" && "$sev" != "CRITICAL" ]]; then
       continue
     fi
-    out="${out:+$out|}$pat"
+    pats+=("$pat")
   done
-  printf '%s' "$out"
+  bounded_pattern "${pats[@]}"
 }
+# Bounded like the audit (see SECRET_LEFT in lib/secrets.sh): purging an unbounded match
+# would rewrite random fragments of base64 blobs, e.g. Codex's encrypted reasoning.
 ACTIVE_PATTERN=$(build_purge_pattern)
+DB_URL_BOUNDED=$(bounded_pattern "$DB_URL_PATTERN")
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR="$AUDIT_DIR/purge-backups/$TIMESTAMP"
@@ -139,8 +142,8 @@ file_secrets() {
   [[ -r "$file" ]] || return
   {
     grep -oE "$ACTIVE_PATTERN" "$file"
-    grep -oE "$DB_URL_PATTERN" "$file" | grep -vE "$LOCAL_HOSTS_RE"
-  } 2>/dev/null | sort -u
+    grep -oE "$DB_URL_BOUNDED" "$file" | grep -vE "$LOCAL_HOSTS_RE"
+  } 2>/dev/null | strip_left | sort -u
 }
 
 # Numbers of the lines that hold any of the given secrets (fixed-string match).

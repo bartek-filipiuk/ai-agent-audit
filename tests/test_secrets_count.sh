@@ -8,9 +8,12 @@ tok=$(fake_secret ghp_ 36 'A-Za-z0-9')
 printf 'export GH=%s\n' "$tok" > "$HOME/.bash_history"
 mkdir -p "$HOME/.claude/projects/-p"
 printf '{"m":"%s"}\n' "$tok" > "$HOME/.claude/projects/-p/s.jsonl"
+# A base64url blob that happens to contain "hf_" + 30 chars is not a token.
+blob="gAAAAAB$(fake_secret '' 20 'A-Za-z0-9')hf_$(fake_secret '' 34 'A-Za-z0-9')"
+printf '{"encrypted_content":"%s"}\n' "$blob" >> "$HOME/.claude/projects/-p/s.jsonl"
 
 run_audit --modules J
-assert_eq 1 "$(jq .summary.secrets_distinct "$OUT/audit-report.json")" "same key in two sources counts once"
+assert_eq 1 "$(jq .summary.secrets_distinct "$OUT/audit-report.json")" "same key in two sources counts once, blob fragment not counted"
 assert_eq 2 "$(jq .summary.secrets_occurrences "$OUT/audit-report.json")" "occurrences are still reported"
 assert_eq 1 "$(jq '.secrets_inventory_summary[0].count' "$OUT/audit-report.json")" "per-type summary dedupes too"
 

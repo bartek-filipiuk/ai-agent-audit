@@ -13,6 +13,8 @@ db_remote="postgres://admin:$(fake_secret '' 16 'A-Za-z0-9')@prod.example.com"
 db_local="postgres://dev:dev@localhost"
 
 SESSION="$HOME/.claude/projects/-home-me-app/1111-2222.jsonl"
+# base64url blob containing "hf_" + 30 chars mid-string: must survive purge byte for byte.
+BLOB="gAAAAAB$(fake_secret '' 20 'A-Za-z0-9')hf_$(fake_secret '' 34 'A-Za-z0-9')Q"
 ENVSNAP="$HOME/.claude/file-history/abc/.env"
 
 make_fixtures() {
@@ -22,7 +24,7 @@ make_fixtures() {
   {
     printf '{"uuid":"a","parentUuid":null,"message":"hello"}\n'
     printf '{"uuid":"b","parentUuid":"a","message":"key %s and %s:5432/app"}\n' "$aws" "$db_remote"
-    printf '{"uuid":"c","parentUuid":"b","message":"done"}\n'
+    printf '{"uuid":"c","parentUuid":"b","message":"done","encrypted_content":"%s"}\n' "$BLOB"
   } > "$SESSION"
   printf 'ANTHROPIC_API_KEY=%s\n' "$ant" > "$ENVSNAP"
 }
@@ -49,6 +51,7 @@ assert_grep '\[REDACTED:AKIA' "$SESSION"
 assert_grep '\[REDACTED:' "$ENVSNAP"
 assert_grep "$db_local" "$HOME/.bash_history" "local DB URL is not purged"
 assert_grep '"parentUuid":"b"' "$SESSION" "session chain intact"
+assert_grep "$BLOB" "$SESSION" "base64 blob with an hf_ fragment is left alone"
 
 backups="$OUT/purge-backups"
 assert_eq 3 "$(find "$backups" -type f | wc -l | tr -d ' ')" "one backup per modified file"

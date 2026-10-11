@@ -97,28 +97,51 @@ SECRET_PATTERNS=(
   'eyJ[A-Za-z0-9_\-]{15,}\.[A-Za-z0-9_\-]{15,}\.[A-Za-z0-9_\-]{15,}|||JWT (signed token)|||varies|||Invalidate session / rotate signing key|||MEDIUM'
 )
 
-# Combined ERE pattern (used as fast filter; modules can grep -qE "$SECRETS_GREP_PATTERN")
-build_secrets_grep_pattern() {
-  local out="" entry pat
-  for entry in "${SECRET_PATTERNS[@]}"; do
-    pat="${entry%%|||*}"
-    if [[ -z "$out" ]]; then
-      out="$pat"
-    else
-      out="$out|$pat"
-    fi
+# A detected token must not continue an identifier or a base64url blob. Without this left
+# boundary, "hf_" + 30 characters occurs by chance inside long base64url strings (Codex
+# stores encrypted reasoning as such blobs): on the author's machine 50+ random blob
+# fragments counted as HuggingFace / Replicate tokens, and purge would have rewritten them.
+# Patterns that start with '-' (PEM headers) are distinctive enough and often follow a
+# JSON-escaped "\n", so they get no boundary.
+SECRET_LEFT='(^|[^A-Za-z0-9_-])'
+# bounded_pattern <ERE>... — one alternation with the boundary applied once, not per
+# alternative: GNU grep runs the single-group form ~2.3x faster on large transcripts.
+bounded_pattern() {
+  local plain="" dash="" p out=""
+  for p in "$@"; do
+    case "$p" in
+      -*) dash="${dash:+$dash|}$p" ;;
+      *)  plain="${plain:+$plain|}$p" ;;
+    esac
   done
+  [[ -n "$plain" ]] && out="${SECRET_LEFT}(${plain})"
+  [[ -n "$dash" ]] && out="${out:+$out|}${dash}"
   printf '%s' "$out"
 }
-SECRETS_GREP_PATTERN="$(build_secrets_grep_pattern)"
-export SECRETS_GREP_PATTERN
+# Drop the boundary character a bounded match may start with.
+strip_left() { sed -E 's/^[^A-Za-z0-9_-]//'; }
+
+# Combined patterns. SECRETS_GREP_PATTERN (bounded) is for detection; SECRETS_ANY_PATTERN
+# (unbounded) is for redacting free text, where over-redacting costs nothing.
+build_secrets_grep_pattern() {
+  local pats=() entry
+  for entry in "${SECRET_PATTERNS[@]}"; do pats+=("${entry%%|||*}"); done
+  if [[ "${1:-}" == bounded ]]; then
+    bounded_pattern "${pats[@]}"
+  else
+    local IFS='|'; printf '%s' "${pats[*]}"
+  fi
+}
+SECRETS_GREP_PATTERN="$(build_secrets_grep_pattern bounded)"
+SECRETS_ANY_PATTERN="$(build_secrets_grep_pattern)"
+export SECRETS_GREP_PATTERN SECRETS_ANY_PATTERN
 
 # Replace every known secret pattern in free text with [REDACTED]. emit_finding runs all
 # finding text through this, so a module that echoes a command line or a config value
 # cannot write a credential to disk. '#' never occurs in SECRET_PATTERNS, so it is a
 # safe sed delimiter.
 redact_secrets_in_text() {
-  printf '%s' "$1" | sed -E "s#($SECRETS_GREP_PATTERN)#[REDACTED]#g"
+  printf '%s' "$1" | sed -E "s#($SECRETS_ANY_PATTERN)#[REDACTED]#g"
 }
 
 # Sanitize fingerprint chars: replace anything outside printable-ASCII (and backslash,
@@ -205,7 +228,7 @@ scan_classify_to_inventory() {
     rotate="${rest%%|||*}"; rest="${rest#*|||}"
     sev="${rest%%|||*}"
 
-    matches=$(grep -oE "$pat" "$file" 2>/dev/null | sort -u)
+    matches=$(grep -oE "$(bounded_pattern "$pat")" "$file" 2>/dev/null | strip_left | sort -u)
     [[ -z "$matches" ]] && continue
 
     while IFS= read -r match; do
@@ -261,10 +284,12 @@ scan_classify_files_aggregated() {
   local files=("$@")
   local merged; merged=$(_secrets_mktemp)
 
-  local f leaky=0
+  local f found leaky=0
   for f in "${files[@]}"; do
     [[ -r "$f" ]] || continue
-    grep -hoE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null >> "$merged" && leaky=$((leaky+1))
+    found=$(grep -hoE "$SECRETS_GREP_PATTERN" "$f" 2>/dev/null) || continue
+    printf '%s\n' "$found" | strip_left >> "$merged"
+    leaky=$((leaky+1))
   done
 
   if [[ ! -s "$merged" ]]; then
@@ -341,7 +366,7 @@ secrets_distinct_count()   { inventory_rows | cut -f1,5 | sort -u | grep -c . ||
 secrets_occurrence_count() { inventory_rows | grep -c . || true; }
 
 export -f inventory_rows secrets_distinct_count secrets_occurrence_count
-export -f _secrets_mktemp _fp_sanitize redact_fingerprint redact_secrets_in_text classify_secret_match \
+export -f bounded_pattern strip_left _secrets_mktemp _fp_sanitize redact_fingerprint redact_secrets_in_text classify_secret_match \
           ensure_secrets_inventory_header \
           scan_classify_to_inventory scan_classify_stdin_to_inventory \
           scan_classify_files_aggregated
