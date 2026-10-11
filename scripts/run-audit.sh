@@ -9,6 +9,7 @@ ALL_MODULES="A B C D E F G H I J K L M N P"
 MODULES_TO_RUN="$ALL_MODULES"
 OPEN_HTML=1
 OUTPUT_DIR=""
+SKIP_SESSIONS=0
 
 # Children run with "$BASH" (this interpreter), not whatever `bash` is first on PATH:
 # on macOS that may be /bin/bash 3.2 even when this script runs under Homebrew bash.
@@ -26,10 +27,14 @@ while [[ $# -gt 0 ]]; do
       if [[ "$1" == "--modules" ]]; then MODULES_TO_RUN="${2//,/ }"; else OUTPUT_DIR="$2"; fi
       shift 2 ;;
     --no-open) OPEN_HTML=0; shift ;;
+    --skip-sessions) SKIP_SESSIONS=1; shift ;;
     -h|--help)
       cat <<EOF
 ai-agent-audit — local developer machine audit for AI-agent risks
-Usage: $0 [--modules A,B,G] [--output ~/.ai-agent-audit] [--no-open]
+Usage: $0 [--modules A,B,G] [--skip-sessions] [--output ~/.ai-agent-audit] [--no-open]
+
+  --skip-sessions  Leave out module J, which reads shell history and AI session
+                   transcripts (the most invasive part of the audit).
 
 Modules:
   A  Credentials (SSH, cloud, package managers, env files)
@@ -64,6 +69,10 @@ EOF
   esac
 done
 
+if [[ "$SKIP_SESSIONS" -eq 1 ]]; then
+  MODULES_TO_RUN=$(printf '%s\n' $MODULES_TO_RUN | grep -vx J | tr '\n' ' ')
+  MODULES_TO_RUN="${MODULES_TO_RUN% }"
+fi
 [[ -n "$OUTPUT_DIR" ]] && AUDIT_DIR="$OUTPUT_DIR"
 AUDIT_DIR="${AUDIT_DIR:-$HOME/.ai-agent-audit}"
 FINDINGS_DIR="$AUDIT_DIR/findings"

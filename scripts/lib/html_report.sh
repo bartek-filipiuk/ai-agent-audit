@@ -38,6 +38,10 @@
 #
 # This is intentionally pessimistic — a developer machine should score ~70+
 # and a hardened one ~90+. Anything below 50 is a "rotate everything" zone.
+# Single source for the human-readable formula (Markdown report, HTML report). README.md
+# and SKILL.md repeat it verbatim; tests/test_docs.sh fails if they drift.
+SCORE_FORMULA_TEXT='Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 15, capped at 15) − 10 if compound supply-chain risk (MCP server via unpinned npx + npm or GitHub publish-capable credentials), floored at 0.'
+
 compute_security_score() {
   local crit="$1" high="$2" med="$3" low="$4" secrets="$5" compound="${6:-0}"
   awk -v c="$crit" -v h="$high" -v m="$med" -v l="$low" -v s="$secrets" -v cp="$compound" '
@@ -64,12 +68,14 @@ compute_grade() {
   fi
 }
 
+# Colour class, on the same cut points as the grade letters:
+# S,A → grade-a · B → grade-b · C,D → grade-c · E → grade-d · F → grade-f
 compute_grade_class() {
   local s="$1"
   if   (( s >= 80 )); then printf 'grade-a'
-  elif (( s >= 60 )); then printf 'grade-b'
-  elif (( s >= 40 )); then printf 'grade-c'
-  elif (( s >= 20 )); then printf 'grade-d'
+  elif (( s >= 70 )); then printf 'grade-b'
+  elif (( s >= 50 )); then printf 'grade-c'
+  elif (( s >= 30 )); then printf 'grade-d'
   else                    printf 'grade-f'
   fi
 }
@@ -134,14 +140,13 @@ _html_secrets_summary_rows() {
     { counts[$1 "|" $2 "|" $3 "|" $4]++ }
     END { for (k in counts) printf("%d\t%s\n", counts[k], k) }
   ' | sort -k1,1 -nr | awk -F'\t' '
+    function h(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); gsub(/"/, "\\&quot;", s); return s }
     {
       n=$1
       split($2, a, /\|/)
       type=a[1]; service=a[2]; rotate=a[3]; sev=a[4]
+      type = h(type); service = h(service); rotate = h(rotate); sev = h(sev)
       sev_class = "sev-" tolower(sev)
-      gsub(/&/, "\\&amp;", type); gsub(/</, "\\&lt;", type); gsub(/>/, "\\&gt;", type)
-      gsub(/&/, "\\&amp;", service); gsub(/</, "\\&lt;", service); gsub(/>/, "\\&gt;", service)
-      gsub(/&/, "\\&amp;", rotate); gsub(/</, "\\&lt;", rotate); gsub(/>/, "\\&gt;", rotate)
       printf("<tr><td class=\"count\">%d</td><td>%s <span class=\"muted\">(%s)</span></td><td><span class=\"badge %s\">%s</span></td><td>%s</td></tr>\n",
              n, type, service, sev_class, sev, rotate)
     }
@@ -152,12 +157,13 @@ _html_secrets_summary_rows() {
 _html_secrets_per_source() {
   [[ -f "$SECRETS_INVENTORY" ]] || return
   awk -F'|' '
+    function h(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); gsub(/"/, "\\&quot;", s); return s }
     /^## Source: / {
       sub(/^## Source: */, "")
       gsub(/^[ \t]+|[ \t]+$/, "")
       if (current != "") print "</tbody></table></details>"
       current=$0
-      gsub(/&/, "\\&amp;", current); gsub(/</, "\\&lt;", current); gsub(/>/, "\\&gt;", current)
+      current = h(current)
       printf("<details class=\"src-block\"><summary><span class=\"src-arrow\">▶</span> %s</summary><table class=\"secrets-table\"><thead><tr><th>Type / Service</th><th>Fingerprint (redacted)</th></tr></thead><tbody>", current)
       next
     }
@@ -170,9 +176,7 @@ _html_secrets_per_source() {
       service=a[3]; gsub(/^ +| +$/, "", service)
       fp=a[6];      gsub(/^ +| +$/, "", fp)
       if (type == "Type" || type == "") next
-      gsub(/&/, "\\&amp;", type); gsub(/</, "\\&lt;", type); gsub(/>/, "\\&gt;", type)
-      gsub(/&/, "\\&amp;", service); gsub(/</, "\\&lt;", service); gsub(/>/, "\\&gt;", service)
-      gsub(/&/, "\\&amp;", fp); gsub(/</, "\\&lt;", fp); gsub(/>/, "\\&gt;", fp)
+      type = h(type); service = h(service); fp = h(fp)
       printf("<tr><td>%s <span class=\"muted\">(%s)</span></td><td><code class=\"fp\">%s</code></td></tr>\n", type, service, fp)
     }
     END {
@@ -232,8 +236,9 @@ generate_html_report() {
   hostname_v=$(hostname 2>/dev/null || echo "unknown-host")
   hostname_v=$(html_escape "$hostname_v")
 
-  local generated
+  local generated formula_h
   generated=$(date)
+  formula_h=$(html_escape "$SCORE_FORMULA_TEXT")
 
   # Begin HTML
   cat > "$out" <<HTML_HEAD
@@ -319,7 +324,6 @@ body::after {
   border-radius: 2px;
   box-shadow: inset 0 0 30px rgba(0, 255, 65, 0.04), 0 0 18px rgba(0, 255, 65, 0.05);
 }
-.banner.skull { color: var(--red); text-shadow: 0 0 8px rgba(255, 33, 71, 0.6); margin: 16px auto; }
 
 /* Status badge (replaces ASCII skull/shield) — predictable cross-browser rendering */
 .status-badge {
@@ -578,7 +582,7 @@ a:hover { color: var(--neon); }
   <div class="score-meta">
     <div class="diagnosis">${diagnosis}</div>
     <div class="muted" style="font-size: 0.92em;">
-      Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct&nbsp;secrets&nbsp;÷&nbsp;15, capped&nbsp;at&nbsp;15) − 10 if compound supply-chain risk (MCP unpinned + npm/gh publish creds).
+      ${formula_h}
       <br>Floor at 0. Lower = bigger blast radius if a malicious dependency lands on this machine today.
     </div>
   </div>
@@ -621,6 +625,20 @@ HTML_BADGE
 </div>
 HTML_BADGE
   elif (( score < 70 )); then
+    # Grades C and D: same message as the diagnosis line.
+    cat >> "$out" <<'HTML_BADGE'
+<div class="status-badge badge-warning">
+  <div class="status-emoji">◆</div>
+  <div class="status-frame">
+    <div class="status-line">─────────────────────────────────────</div>
+    <div class="status-caption">// AT RISK //</div>
+    <div class="status-sub">Fix CRITICAL today, HIGH this week</div>
+    <div class="status-line">─────────────────────────────────────</div>
+  </div>
+</div>
+HTML_BADGE
+  elif (( score < 80 )); then
+    # Grade B
     cat >> "$out" <<'HTML_BADGE'
 <div class="status-badge badge-warning">
   <div class="status-emoji">◆</div>
@@ -713,7 +731,7 @@ HTML_BADGE
 <hr class="hr-glow">
 
 <footer>
-  <div>// Audit complete &mdash; ${total} findings across 15 modules. Re-run weekly:</div>
+  <div>// Audit complete &mdash; ${total} findings (modules ${MODULES_RUN:-all}). Re-run weekly:</div>
   <div><code>bash scripts/run-audit.sh</code></div>
   <div style="margin-top: 12px;">Reports: <code>audit-report.md</code> &middot; <code>audit-report.json</code> &middot; <code>secrets-inventory.md</code> &middot; <code>action-plan.md</code> &middot; <code>audit-report.html</code></div>
   <div style="margin-top: 12px; opacity: 0.65;">// generated by ai-agent-audit &mdash; read-only, no network, fingerprint-only secret display</div>
@@ -725,6 +743,7 @@ HTML_BADGE
 HTML_FOOT
 }
 
+export SCORE_FORMULA_TEXT
 export -f compute_security_score compute_grade compute_grade_class \
           html_escape generate_html_report \
           _html_render_finding _html_render_findings_for_sev \

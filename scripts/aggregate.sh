@@ -153,7 +153,7 @@ fi
   echo
   echo "**${SCORE}/100** — Grade **${GRADE_LETTER}** (${GRADE_LABEL})"
   echo
-  echo "_Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 15, capped 15) − 10 if compound supply-chain risk (MCP unpinned & npm/gh publish creds). Floor 0._"
+  echo "_${SCORE_FORMULA_TEXT}_"
   if [[ "$COMPOUND" -eq 1 ]]; then
     echo
     echo "> ⚠️ **Compound penalty applied (-10).** Host runs MCP via unpinned npx AND holds publish-capable npm or GitHub credentials — a single trojaned upstream affects every user of this host's published packages."

@@ -40,7 +40,7 @@ bash ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh
 
 > Use the ai-agent-audit skill to scan this machine, focusing on Nx-style supply-chain indicators (module G) and the secrets inventory. Tell me which keys to rotate today.
 
-Claude reads `SKILL.md`, runs `bash scripts/run-audit.sh`, parses the four output files (`audit-report.md`, `audit-report.json`, `secrets-inventory.md`, `action-plan.md`), and summarises with severity-ordered recommendations. The HTML report opens automatically in your default browser unless you pass `--no-open`.
+Claude reads `SKILL.md`, runs `bash scripts/run-audit.sh`, parses the reports (`audit-report.md`, `audit-report.json`, `secrets-inventory.md`, `action-plan.md`; the fifth, `audit-report.html`, is for you), and summarises with severity-ordered recommendations. The HTML report opens automatically in your default browser unless you pass `--no-open`.
 
 **One-line score check** (after a run):
 
@@ -89,10 +89,10 @@ The same scripts run on both platforms. Module checks adapt automatically: `sock
 ## What it does
 
 - **Fifteen audit modules (A–N plus P)** covering credentials, AI tool configuration, token scope, environment separation, backups, sandboxing, supply-chain compromise indicators (Nx-style and post-Nx), browser and password-manager session state, network egress, credential leakage in shell history and AI session transcripts (with per-secret service classification), AI hooks and repository-level configs, agent skills supply chain, MCP server inventory, known compromised packages, and macOS-specific privacy and persistence checks.
-- **Five reports per run.** `audit-report.md` is human-readable and grouped by severity, with full remediation per finding. `audit-report.json` contains every finding for scripting and diffing across runs, plus a security score, grade letter, and per-service secrets summary. `audit-report.html` is a self-contained cyberpunk-themed HTML view that auto-opens in the browser at the end of the run — score gauge, severity strip, secrets table, collapsible findings, ASCII skull on sub-50 scores. `secrets-inventory.md` lists every detected credential pattern, classified by service, with a redacted fingerprint and a direct pointer to the right rotation panel. `action-plan.md` is the prioritised checklist — start here. It presents a summary-by-service rotation table plus per-source breakdown, then groups findings into TODAY (critical) / THIS WEEK (high) / THIS MONTH (medium) buckets so you can work top-to-bottom without re-reading the full report.
+- **Five reports per run.** `audit-report.md` is human-readable and grouped by severity, with full remediation per finding. `audit-report.json` contains every finding for scripting and diffing across runs, plus a security score, grade letter, and per-service secrets summary. `audit-report.html` is a self-contained cyberpunk-themed HTML view that auto-opens in the browser at the end of the run — score gauge, severity strip, secrets table, collapsible findings, a ☠ status badge below 30. `secrets-inventory.md` lists every detected credential pattern, classified by service, with a redacted fingerprint and a direct pointer to the right rotation panel. `action-plan.md` is the prioritised checklist — start here. It presents a summary-by-service rotation table plus per-source breakdown, then groups findings into TODAY (critical) / THIS WEEK (high) / THIS MONTH (medium) buckets so you can work top-to-bottom without re-reading the full report.
 
-- **Security score (0-100).** Single-number summary: `100 − 5×CRITICAL − 1.7×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct_secrets ÷ 20, capped 10)`, floored at 0. Grades from S (≥90, "Hardened") through F (<30, "Pwned-Ready"). Score is displayed in `audit-report.json`, `audit-report.md`, and the HTML report. It is intentionally pessimistic — a developer machine should aim for 70+, hardened ones reach 90+. Anything below 50 is the "rotate everything" zone.
-- **Hard guarantees.** Read-only on the host filesystem outside the output directory. No network calls. No secret values are ever written to disk or shown on screen — only paths, types, counts, and `XXXX****YYYY (N chars)` fingerprints sufficient to identify which key it is in your provider UI but insufficient to use.
+- **Security score (0-100).** Single-number summary. Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 15, capped at 15) − 10 if compound supply-chain risk (MCP server via unpinned npx + npm or GitHub publish-capable credentials), floored at 0. A key found in several files counts once. Grades from S (≥90, "Hardened") through F (<30, "Pwned-Ready"). Score is displayed in `audit-report.json`, `audit-report.md`, and the HTML report. It is intentionally pessimistic — a developer machine should aim for 70+, hardened ones reach 90+. Anything below 50 is the "rotate everything" zone.
+- **Hard guarantees.** Read-only on the host filesystem outside the output directory (`purge-secrets.sh` is the separate, opt-in exception). No network calls. No secret values are ever written to disk or shown on screen — only paths, types, counts, and `XXXX****YYYY (N chars)` fingerprints sufficient to identify which key it is in your provider UI but insufficient to use.
 
 ## Requirements
 
@@ -259,10 +259,17 @@ bash scripts/run-audit.sh --modules J,K,L,M  # the AI-specific cluster
 ai-agent-audit/
 ├── README.md                          # this file
 ├── SKILL.md                           # Claude skill entry point
+├── .github/workflows/ci.yml           # shellcheck + tests on Ubuntu and macOS
+├── docs/
+│   ├── usage-guide.md                 # interpreting results, agent verification prompt
+│   └── improvement-plan-2026-10.md    # the October 2026 hardening plan
+├── tests/
+│   ├── run.sh                         # runs every tests/test_*.sh against a fake HOME
+│   └── lib.sh                         # fixtures, stubs, assertions
 ├── scripts/
 │   ├── run-audit.sh                   # main orchestrator
 │   ├── aggregate.sh                   # JSONL → JSON + Markdown
-│   ├── purge-secrets.sh               # remove detected credential lines (dry-run by default)
+│   ├── purge-secrets.sh               # redact detected credentials in place (dry-run by default)
 │   ├── lib/
 │   │   ├── common.sh                  # shared helpers, OS detection, json_decode_field
 │   │   ├── secrets.sh                 # secret classification database, redact_fingerprint
@@ -283,7 +290,7 @@ ai-agent-audit/
 │       ├── L_skills.sh                # agent skills supply chain
 │       ├── M_mcp.sh                   # MCP inventory and risk
 │       ├── N_packages.sh              # compromised package IOCs
-│       └── P_macos.sh                 # macOS-specific
+│       └── P_macos.sh                 # macOS-specific (X.roots is written by run-audit.sh)
 └── references/
     ├── incident-catalog.md            # documented incidents driving the checks
     └── remediation-guides.md          # vendor-specific fix steps

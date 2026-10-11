@@ -10,29 +10,32 @@ chmod +x ~/.claude/skills/ai-agent-audit/scripts/*.sh \
          ~/.claude/skills/ai-agent-audit/scripts/lib/*.sh \
          ~/.claude/skills/ai-agent-audit/scripts/modules/*.sh
 bash ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh
+# macOS: stock bash is 3.2 and the audit needs 4.4+ → brew install bash, then
+# "$(brew --prefix)/bin/bash" ~/.claude/skills/ai-agent-audit/scripts/run-audit.sh
 ```
 
-HTML report opens in your default browser. All output lives in `~/.ai-agent-audit/`.
+HTML report opens in your default browser. All output lives in `~/.ai-agent-audit/` (mode 700), or in the directory given with `--output`. `--skip-sessions` leaves out module J (shell history and AI transcripts); `AUDIT_DEV_PATHS=/a:/b` picks the project roots to scan.
 
 ## What gets scanned
 
 | Module | Domain | Notes |
 |---|---|---|
-| A | Credentials | SSH, AWS/GCP/Azure/K8s, npm/cargo/pypi/docker tokens, GitHub CLI, .env files, GPG, crypto wallets |
-| B | AI tool config | Installed CLIs, dangerous flags in shell init, MCP configs, project rules |
+| A | Credentials | SSH, AWS/GCP/Azure/K8s, npm/cargo/pypi/docker tokens, GitHub and GitLab CLI, .netrc/.pgpass/Terraform/Vault, .env files, GPG, crypto wallets |
+| B | AI tool config | Installed CLIs, permission-bypass aliases and env vars, Claude Code settings (bypassPermissions, Bash allow-all, auto-approved project MCP, custom base URL) |
 | C | Token scope | GitHub PAT type, AWS long-lived vs SSO, npm token count |
-| D | Environment separation | dev/prod profile counts, SSH host aliases, .gitignore for .env |
-| E | Backup hygiene | restic/borg/TimeMachine presence |
-| F | Sandbox / isolation | container detection, group memberships, sudo cache |
-| G | Nx-style compromise | known compromised Nx versions, shutdown injection, /tmp/inventory.txt |
+| D | Environment separation | dev/prod profile counts, SSH host aliases, prod DATABASE_URL in dev, .gitignore for .env |
+| E | Backup hygiene | restic/borg/active Time Machine, git remote diversity |
+| F | Sandbox / isolation | container/WSL detection, group memberships, passwordless sudo, sudo cache |
+| G | Supply-chain compromise | shutdown injection, s1ngularity and Shai-Hulud repos and payload files, /tmp/inventory.txt, suspicious install scripts |
 | H | Browser / password manager | browser data presence, 1P/Bitwarden unlock state |
-| I | Network egress | firewall, outbound firewall, HTTP_PROXY |
-| J | Sessions + history | per-secret classification across shell histories, Claude/Cursor sessions, Cline state |
-| K | AI hooks + repo configs | global hooks, repo-level configs, prompt-injection patterns in CLAUDE.md/AGENTS.md |
-| L | AI skills supply chain | recently-installed skills, suspicious SKILL.md patterns |
-| M | MCP server inventory | per-server launch method classification, npx pinned vs unpinned |
-| N | Compromised packages | IOC list (Nx 20.9.0–21.8.0, axios 1.14.1/0.30.4, @bitwarden/cli 2026.4.0, prettier-vscode-plus) |
-| P | macOS-specific | TCC.db, LaunchAgents, Time Machine, Spotlight, SIP — Linux skip |
+| I | Network egress | firewall (ufw.conf, firewalld, nftables, socketfilterfw), outbound firewall, HTTP_PROXY |
+| J | Sessions + history | per-secret classification across shell histories, Claude Code sessions / file-history / snapshots, Codex, Gemini, Cursor, Aider, Cline |
+| K | AI hooks + repo configs | global and plugin hooks, repo-level configs (hooks, permissions, env overrides), prompt-injection / bypass / hidden-comment patterns in rules, agent and command files |
+| L | AI skills supply chain | every SKILL.md: recently installed, invisible characters, bypass/exfiltration wording, pipe-to-shell |
+| M | MCP server inventory | user and project scope, Codex TOML, Gemini, Cline, repo configs; launch method, remote servers, plaintext secrets |
+| N | Compromised packages | one IOC list (Nx 20.9.0–20.12.0 / 21.5.0–21.8.0, axios 1.14.1/0.30.4, @bitwarden/cli 2026.4.0, prettier-vscode-plus); declared, locked and installed versions |
+| P | macOS-specific | TCC.db, LaunchAgents (incl. com.apple.* masquerade), Time Machine encryption, Spotlight, SIP — Linux skip |
+| X | Run context | which project roots were scanned |
 
 ## Output artefacts
 
@@ -43,25 +46,21 @@ HTML report opens in your default browser. All output lives in `~/.ai-agent-audi
 ├── audit-report.md           # full markdown report
 ├── audit-report.json         # machine-readable + score + secrets summary
 ├── secrets-inventory.md      # per-source classified secrets, redacted fingerprints
-└── findings/
-    ├── A.jsonl
-    ├── B.jsonl
-    └── ...
+├── findings/
+│   ├── A.jsonl
+│   ├── ...
+│   └── X.jsonl               # run context (scanned project roots)
+└── purge-backups/            # only after purge-secrets.sh --purge; holds originals
+
 ```
 
 ## Interpreting the score
 
 Formula:
-```
-score = 100
-       − 5    × CRITICAL
-       − 2.5  × HIGH
-       − 0.3  × MEDIUM
-       − 0.05 × LOW
-       − min(distinct_secrets / 15, 15)
-       − 10 if (MCP_unpinned ≥ 1) AND (npm publish token OR GitHub PAT with workflow scope)
-floor 0
-```
+
+Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 15, capped at 15) − 10 if compound supply-chain risk (MCP server via unpinned npx + npm or GitHub publish-capable credentials), floored at 0.
+
+"Distinct secrets" counts each key once (type + fingerprint), however many files it appears in.
 
 Grade table:
 
@@ -73,7 +72,7 @@ Grade table:
 | 60-69 | C | Concerning |
 | 50-59 | D | At Risk |
 | 30-49 | E | Critical Exposure |
-| 0-29 | F | Pwned-Ready (skull rendered) |
+| 0-29 | F | Pwned-Ready (☠ badge) |
 
 The compound penalty captures the "I am a supply-chain distributor" meta-risk: if you have unpinned MCP (= you run untrusted code at every agent invocation) AND publish-capable npm/gh tokens (= you ship code others install), a single trojaned upstream cascades beyond your host.
 
@@ -94,8 +93,7 @@ The audit is intentionally pessimistic. Common false positives:
 - **Documentation placeholders** — `AKIAIOSFODNN7EXAMPLE`, `ghp_xxxxxxxxwxyz`, `sk_live_xxxxxxxxaaaa` from tutorials and READMEs. The fingerprint format helps: clearly suspicious-looking patterns (lots of `x`, ending in obvious filler like `wxyz`) are usually placeholders.
 - **Local docker DB URLs** — `postgres://user:pass@localhost/db`, `@db`, `@postgres-container`. The audit excludes these by default (compares hostname against local-network whitelist).
 - **JWT fragments from dev/test** — `eyJ...` strings from session tokens in dev environments. Often valid technically but no production blast radius.
-- **Recently-installed skill subdirectories** — module L flags `~/.claude/skills/<name>/references/` as separate skills. Known limitation.
-- **HTTP-type MCP servers** — module M flags HTTP MCP (`"type": "http"`) as "unknown launcher". HTTP transport is legit; the audit just doesn't categorize it.
+- **Persona lines in rules files** — "You are now an expert in X" matches the injection pattern (K.3.injection, MEDIUM). Read the line in the evidence before acting.
 
 ## Feeding findings to an AI agent for verification
 
@@ -119,9 +117,8 @@ Rules for FALSE_POSITIVE:
   @<docker-container-name> — local-only network exposure.
 - JWT pattern (eyJ...) found in plain text — likely a regex fragment from documentation
   or a dev/test session token, not a production secret.
-- "Recently installed skill" finding in module L where the path contains
-  `/references/` — that's a subdirectory, not a separate skill.
-- MCP server with "type": "http" reported as M.2.unknown — HTTP transport is legit.
+- K.3.injection whose evidence line is a persona instruction ("You are now an
+  expert in ...") rather than an override of earlier instructions.
 - npm token in ~/.npmrc that returns 401 from `npm whoami` — already revoked,
   the file just hasn't been cleaned up.
 
@@ -165,7 +162,7 @@ jq '.findings[] | select(.severity == "HIGH" or .severity == "CRITICAL")' \
 
 - **Read-only.** Never writes outside `~/.ai-agent-audit/` (or `--output`).
 - **No network.** No verification calls against vendor APIs. Treat every detected match as live and rotate.
-- **No secret values on disk.** Detected credentials are stored as redacted fingerprints (`XXXX****YYYY (N chars)`) only.
+- **No secret values on disk.** Detected credentials are stored as redacted fingerprints (`XXXX****YYYY (N chars)`) only. Every finding passes through a redactor, raw matches live only in a private temp dir that is removed on exit, and text copied from untrusted files is truncated and labelled `[untrusted content]`.
 - **No auto-remediation.** All findings include a remediation field; you run the fixes.
 
 ## Related utilities
