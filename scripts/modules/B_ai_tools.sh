@@ -101,11 +101,11 @@ done
 # ---------- B.4: Project rules files ----------
 # CLAUDE.md, .cursorrules, .clinerules, AGENTS.md — anywhere in workspace
 RULE_PATHS=()
-for p in "$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -n "$f" ]] && RULE_PATHS+=("$f")
-  done < <(find "$p" -maxdepth 4 -type f \( -name 'CLAUDE.md' -o -name '.cursorrules' -o -name '.clinerules' -o -name 'AGENTS.md' \) -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
+  done < <(dev_find "$p" 4 -type f \( -name 'CLAUDE.md' -o -name '.cursorrules' -o -name '.clinerules' -o -name 'AGENTS.md' \))
 done
 
 if [[ ${#RULE_PATHS[@]} -gt 0 ]]; then

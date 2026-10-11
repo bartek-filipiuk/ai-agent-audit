@@ -109,6 +109,18 @@ if [[ "$MODULES_TO_RUN" != "$ALL_MODULES" ]]; then
   echo
 fi
 
+# Run-level context: which project roots the repo-level checks (A.5, B.4, D, E, G, K, L,
+# M, N) walk. A finding nobody sees is a check nobody knows was skipped.
+roots_list=$(printf -- '- %s\n' "${DEV_SEARCH_PATHS[@]}")
+roots_src="derived from ~/.claude.json and ~/.codex/config.toml project lists plus conventional names"
+[[ -n "${AUDIT_DEV_PATHS:-}" ]] && roots_src="from AUDIT_DEV_PATHS"
+roots_note=""
+[[ "$DEV_ROOTS_CAPPED" -eq 1 ]] && roots_note=" Capped at $DEV_ROOTS_CAP roots — set AUDIT_DEV_PATHS to choose them."
+emit_finding X INFO X.roots \
+  "Scanned ${#DEV_SEARCH_PATHS[@]} project root(s) for repo-level checks" \
+  "Roots ${roots_src}.${roots_note}"$'\n'"${roots_list}" \
+  "To scan other directories: AUDIT_DEV_PATHS=/path/one:/path/two bash scripts/run-audit.sh" ""
+
 # Run each requested module
 MODULES_RUN=""
 for m in $MODULES_TO_RUN; do

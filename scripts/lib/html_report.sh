@@ -114,7 +114,7 @@ _html_render_finding() {
 # ---------- Render all findings of a given severity ----------
 _html_render_findings_for_sev() {
   local sev="$1" sev_class="$2"
-  for module_letter in A B C D E F G H I J K L M N P; do
+  for module_letter in $REPORT_MODULES; do
     local f="$FINDINGS_DIR/$module_letter.jsonl"
     [[ -f "$f" ]] || continue
     while IFS= read -r line; do

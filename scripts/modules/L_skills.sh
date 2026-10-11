@@ -32,7 +32,7 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r d; do
     [[ -n "$d" ]] && SKILL_DIRS+=("$d")
-  done < <(find "$p" -maxdepth 5 -type d -name 'skills' -path '*/.claude/skills' -not -path '*/node_modules/*' 2>/dev/null)
+  done < <(dev_find "$p" 5 -type d -path '*/.claude/skills')
 done
 
 UTF_ZWBIDI=$'\xe2\x80[\x8b\x8c\x8d\x8e\x8f\xaa\xab\xac\xad\xae]\|\xe2\x81[\xa0\xa1\xa2\xa3\xa4]'

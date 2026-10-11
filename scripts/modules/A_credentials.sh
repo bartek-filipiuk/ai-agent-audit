@@ -167,16 +167,15 @@ fi
 
 # ---------- A.5: .env files in workspace ----------
 # Search common dev paths for .env files (limited depth, exclude node_modules)
-ENV_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
 env_count=0
 env_examples=""
-for p in "${ENV_PATHS[@]}"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -z "$f" ]] && continue
     env_count=$((env_count+1))
     [[ $env_count -le 3 ]] && env_examples="$env_examples$f"$'\n'
-  done < <(find "$p" -maxdepth 4 -type f \( -name '.env' -o -name '.env.local' -o -name '.env.production' -o -name '.env.prod' \) -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
+  done < <(dev_find "$p" 4 -type f \( -name '.env' -o -name '.env.local' -o -name '.env.production' -o -name '.env.prod' \))
 done
 
 if [[ $env_count -gt 0 ]]; then

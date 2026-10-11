@@ -85,11 +85,10 @@ for rc in "${SHELL_RC_FILES[@]}"; do
 done
 
 # ---------- G.6: Suspicious npm postinstall scripts in current node_modules ----------
-ENV_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work")
 POSTINSTALL_CAP=2000
 suspicious_postinstall=0
 scanned_pj=0
-for p in "${ENV_PATHS[@]}"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r pj; do
     [[ -z "$pj" ]] && continue
@@ -114,7 +113,7 @@ for p in "${ENV_PATHS[@]}"; do
 done
 
 # ---------- G.8 (local): Shai-Hulud payload files in node_modules ----------
-for p in "${ENV_PATHS[@]}"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   hit=$(find "$p" -maxdepth 6 -path '*/node_modules/*' \( -name 'setup_bun.js' -o -name 'bun_environment.js' \) 2>/dev/null | head -3)
   if [[ -n "$hit" ]]; then

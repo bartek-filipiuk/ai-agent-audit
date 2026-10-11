@@ -36,7 +36,7 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -n "$f" ]] && MCP_CONFIGS+=("$f")
-  done < <(find "$p" -maxdepth 5 -name '.mcp.json' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
+  done < <(dev_find "$p" 5 -name '.mcp.json')
 done
 
 total_servers=0

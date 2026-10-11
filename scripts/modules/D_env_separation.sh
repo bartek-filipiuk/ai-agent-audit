@@ -37,9 +37,8 @@ if [[ -f "$HOME/.ssh/config" ]]; then
 fi
 
 # Active workspace .env analysis — does it point to production?
-ENV_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work")
 suspicious_envs=0
-for p in "${ENV_PATHS[@]}"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r f; do
     [[ -z "$f" ]] && continue
@@ -53,13 +52,13 @@ for p in "${ENV_PATHS[@]}"; do
           "Verify which env this is. Production credentials should never sit in a dev workspace .env file. Use a vault." \
           "PocketOS — agent connected to prod DB because credentials were locally accessible"
     fi
-  done < <(find "$p" -maxdepth 4 -type f \( -name '.env' -o -name '.env.local' -o -name '.env.production' \) -not -path '*/node_modules/*' 2>/dev/null)
+  done < <(dev_find "$p" 4 -type f \( -name '.env' -o -name '.env.local' -o -name '.env.production' \))
 done
 
 # .gitignore hygiene — sample check
 gitignored=0
 not_gitignored=0
-for p in "${ENV_PATHS[@]}"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
@@ -74,7 +73,7 @@ for p in "${ENV_PATHS[@]}"; do
             "" "Add .env, .env.* to .gitignore immediately. Check git log to ensure it was never committed." ""
       fi
     fi
-  done < <(find "$p" -maxdepth 3 -type d -name '.git' -exec dirname {} \; 2>/dev/null)
+  done < <(find "$p" -maxdepth 3 -name node_modules -prune -o -type d -name '.git' -prune -print 2>/dev/null | sed 's#/\.git$##')
 done
 
 log "$MODULE" "done — $(wc -l < "$FINDINGS_DIR/$MODULE.jsonl" | tr -d ' ') findings"

@@ -112,7 +112,7 @@ for p in "${DEV_SEARCH_PATHS[@]}"; do
         fi
       done < <(resolved_versions "$dir" "$pkg" | sort -u)
     done
-  done < <(find "$p" -maxdepth 4 -name 'package.json' -not -path '*/node_modules/*' 2>/dev/null | head -200)
+  done < <(dev_find "$p" 4 -name 'package.json' | head -200)
 done
 
 # ---------- N.2: pip ----------

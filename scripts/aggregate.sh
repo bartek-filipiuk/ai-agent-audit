@@ -216,7 +216,7 @@ fi
     echo "## $emoji $sev findings ($local_count)"
     echo
 
-    for module_letter in $ALL_MODULES; do
+    for module_letter in $REPORT_MODULES; do
       f="$FINDINGS_DIR/$module_letter.jsonl"
       [[ -f "$f" ]] || continue
       while IFS= read -r line; do

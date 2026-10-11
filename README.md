@@ -150,6 +150,14 @@ Help:
 bash scripts/run-audit.sh --help
 ```
 
+### Which project directories are scanned
+
+Repo-level checks (`.env` files, `CLAUDE.md` / `.cursorrules`, `.claude/settings.json`, `.mcp.json`, `package.json`, git remotes) walk a set of project roots. By default they come from where your agents actually ran: the `projects` keys in `~/.claude.json` and the `[projects."<path>"]` entries in `~/.codex/config.toml`, plus the conventional `~/projects`, `~/code`, `~/dev`, `~/work`, `~/repos`, `~/src`. A parent holding more than three known projects is scanned as one root, `$HOME` itself is never a root, and at most 60 roots are kept. The report lists the roots it used in the `X.roots` finding. To choose them yourself:
+
+```bash
+AUDIT_DEV_PATHS="$HOME/work:$HOME/clients" bash scripts/run-audit.sh
+```
+
 ## Modules
 
 | ID | Domain | Key checks |

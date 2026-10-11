@@ -27,6 +27,11 @@ case "$(uname -s)" in
 esac
 export OS
 
+# Finding files rendered into the reports, in order. X holds run-level context (scanned
+# roots) written by run-audit.sh itself.
+REPORT_MODULES="A B C D E F G H I J K L M N P X"
+export REPORT_MODULES
+
 # --- Tool availability ---
 has() { command -v "$1" >/dev/null 2>&1; }
 HAS_JQ=$(has jq && echo 1 || echo 0)
@@ -239,13 +244,81 @@ untrusted_snippet() {
   printf '%s:%s %s' "$file" "$n" "$(untrusted_text "$(sed -n "${n}p" "$file" 2>/dev/null)" "$max")"
 }
 
-# Standard search paths for user dev projects (used by multiple modules).
-DEV_SEARCH_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
-export DEV_SEARCH_PATHS
+# --- Project roots scanned by repo-level checks ---
+# Guessing directory names (~/projects, ~/code, ...) missed most real layouts, so roots come
+# from where agents actually ran:
+#   - AUDIT_DEV_PATHS (colon-separated) — when set, used exclusively;
+#   - otherwise ~/.claude.json .projects keys and Codex [projects."<path>"] entries, plus
+#     the conventional names. Gemini CLI keeps no project list, so it adds nothing.
+# Directories with more than 3 known projects under the same parent collapse to that
+# parent; $HOME and its ancestors are never roots (home-level files are checked directly);
+# roots nested in another root are dropped; at most DEV_ROOTS_CAP roots are kept.
+DEV_ROOTS_CAP=60
+export DEV_ROOTS_CAPPED=0  # set by build_dev_search_paths, read by run-audit.sh
+DEFAULT_DEV_DIRS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work" "$HOME/repos" "$HOME/src")
+
+_agent_project_dirs() {
+  if [[ -f "$HOME/.claude.json" ]]; then
+    if [[ "$HAS_JQ" -eq 1 ]]; then
+      jq -r '.projects // {} | keys[]' "$HOME/.claude.json" 2>/dev/null
+    elif [[ "$HAS_PYTHON3" -eq 1 ]]; then
+      python3 -c 'import json,sys
+try: print("\n".join(json.load(open(sys.argv[1])).get("projects", {}).keys()))
+except Exception: pass' "$HOME/.claude.json" 2>/dev/null
+    fi
+  fi
+  [[ -f "$HOME/.codex/config.toml" ]] && \
+    sed -nE 's/^\[projects\."([^"]+)"\][[:space:]]*$/\1/p' "$HOME/.codex/config.toml" 2>/dev/null
+  return 0
+}
+
+build_dev_search_paths() {
+  local cand=() p
+  if [[ -n "${AUDIT_DEV_PATHS:-}" ]]; then
+    IFS=: read -r -a cand <<<"$AUDIT_DEV_PATHS"
+  else
+    while IFS= read -r p; do [[ -n "$p" ]] && cand+=("$p"); done < <(_agent_project_dirs)
+    cand+=("${DEFAULT_DEV_DIRS[@]}")
+  fi
+  DEV_SEARCH_PATHS=()
+  DEV_ROOTS_CAPPED=0
+  while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    if [[ "${#DEV_SEARCH_PATHS[@]}" -ge "$DEV_ROOTS_CAP" ]]; then DEV_ROOTS_CAPPED=1; break; fi
+    DEV_SEARCH_PATHS+=("$p")
+  done < <(
+    for p in "${cand[@]}"; do [[ -d "$p" ]] && printf '%s\n' "${p%/}"; done | awk -v home="$HOME" '
+      { p = $0
+        if (p == "" || p == home || index(home "/", p "/") == 1) next   # $HOME or an ancestor
+        par = p; sub(/\/[^\/]*$/, "", par)
+        n++; cand[n] = p; parent[n] = par; cnt[par]++ }
+      END {
+        for (i = 1; i <= n; i++) {
+          r = cand[i]
+          if (cnt[parent[i]] > 3 && parent[i] != home && index(home "/", parent[i] "/") != 1) r = parent[i]
+          if (!(r in seen)) { seen[r] = 1; out[++m] = r }
+        }
+        for (i = 1; i <= m; i++) {          # drop roots nested inside another root
+          nested = 0
+          for (j = 1; j <= m; j++) if (i != j && index(out[i], out[j] "/") == 1) nested = 1
+          if (!nested) print out[i]
+        }
+      }' | sort
+  )
+}
+build_dev_search_paths
+
+# dev_find <root> <maxdepth> <find expression...> — find that never descends into
+# node_modules or .git. Pruning (instead of -not -path filtering) is ~15x faster on real
+# workspaces. Checks that need to look inside node_modules use plain find.
+dev_find() {
+  local root="$1" depth="$2"; shift 2
+  find "$root" -maxdepth "$depth" \( -name node_modules -o -name .git \) -prune -o \( "$@" \) -print 2>/dev/null
+}
 
 export -f has json_escape emit_finding untrusted_text untrusted_snippet claude_settings_flags file_perm_octal file_mtime_unix \
           count_matches count_pattern_matches json_decode_field \
-          ssh_key_has_passphrase \
+          ssh_key_has_passphrase _agent_project_dirs build_dev_search_paths dev_find \
           log warn err
 
 # Secret patterns and redaction, needed by emit_finding. secrets.sh does not source

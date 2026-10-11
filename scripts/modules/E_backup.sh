@@ -41,9 +41,8 @@ if [[ "$backup_tool_found" -eq 0 ]]; then
 fi
 
 # Check git remotes diversity for projects
-ENV_PATHS=("$HOME/Projects" "$HOME/projects" "$HOME/dev" "$HOME/code" "$HOME/work")
 single_remote_repos=0
-for p in "${ENV_PATHS[@]}"; do
+for p in "${DEV_SEARCH_PATHS[@]}"; do
   [[ -d "$p" ]] || continue
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
@@ -52,7 +51,7 @@ for p in "${ENV_PATHS[@]}"; do
     if [[ "$remote_count" -le 1 ]]; then
       single_remote_repos=$((single_remote_repos+1))
     fi
-  done < <(find "$p" -maxdepth 3 -type d -name '.git' -exec dirname {} \; 2>/dev/null)
+  done < <(find "$p" -maxdepth 3 -name node_modules -prune -o -type d -name '.git' -prune -print 2>/dev/null | sed 's#/\.git$##')
 done
 
 if [[ "$single_remote_repos" -gt 5 ]]; then

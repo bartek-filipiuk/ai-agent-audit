@@ -181,7 +181,7 @@ HABITS
 _action_plan_render_findings() {
   local sev="$1"
   local n=0
-  for module_letter in A B C D E F G H I J K L M N P; do
+  for module_letter in $REPORT_MODULES; do
     local f="$FINDINGS_DIR/$module_letter.jsonl"
     [[ -f "$f" ]] || continue
     while IFS= read -r line; do
@@ -211,7 +211,7 @@ _action_plan_render_findings() {
 # remediation per item would drown the page.
 _action_plan_render_findings_condensed() {
   local sev="$1"
-  for module_letter in A B C D E F G H I J K L M N P; do
+  for module_letter in $REPORT_MODULES; do
     local f="$FINDINGS_DIR/$module_letter.jsonl"
     [[ -f "$f" ]] || continue
     while IFS= read -r line; do
