@@ -161,7 +161,7 @@ jq '.findings[] | select(.severity == "HIGH" or .severity == "CRITICAL")' \
 ## Privacy and safety guarantees
 
 - **Read-only.** Never writes outside `~/.ai-agent-audit/` (or `--output`).
-- **No network.** No verification calls against vendor APIs. Treat every detected match as live and rotate.
+- **No verification calls.** The audit never tests a detected key against the vendor API (the only network calls are your own `gh`, `npm` and `op` asking about your account). Treat every detected match as live and rotate.
 - **No secret values on disk.** Detected credentials are stored as redacted fingerprints (`XXXX****YYYY (N chars)`) only. Every finding passes through a redactor, raw matches live only in a private temp dir that is removed on exit, and text copied from untrusted files is truncated and labelled `[untrusted content]`.
 - **No auto-remediation.** All findings include a remediation field; you run the fixes.
 

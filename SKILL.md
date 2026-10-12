@@ -108,7 +108,7 @@ Do NOT run remediation or `--purge` without explicit user confirmation per item 
 
 ## Important notes
 
-- **Read-only, no network.** The audit writes only to its output directory. `purge-secrets.sh` is a separate tool that modifies files, and only with `--purge`.
+- **Read-only, no telemetry.** The audit writes only to its output directory. Its only network calls are your own logged-in `gh`, `npm` and `op` CLIs asking about your account. `purge-secrets.sh` is a separate tool that modifies files, and only with `--purge`.
 - **No credential values anywhere.** Findings carry paths, types and `XXXX****YYYY (N chars)` fingerprints. A redactor runs over every finding as a safety net.
 - **Optional tools** (`jq`, `sqlite3`, `gh`, `npm`) are detected; checks that need a missing tool are skipped.
 

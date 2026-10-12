@@ -2,13 +2,15 @@
 
 Read-only security audit of a local developer machine, focused on the attack surface that AI coding agents can reach.
 
+Landing page and fix-it guide: https://local-security.devince.dev (Polish and English).
+
 This tool answers a single question: **"What can an AI coding agent see and do on this machine right now, and how bad would it be if one of them went off the rails?"**
 
 It scans for credentials, tool configuration, hooks, MCP servers, agent skills, IDE extensions, session artifacts, and supply-chain compromise indicators that AI agents (Cursor, Claude Code, Gemini CLI, Cline, Aider, Codex, Windsurf, Amazon Q, and others) routinely have access to. Every finding maps to a documented incident class.
 
 ## TL;DR
 
-Read-only scan of `$HOME` for everything an AI coding agent can reach: SSH keys, cloud creds, npm/pip tokens, MCP server configs, AI hooks, repo-level `.claude/.cursor/` configs, agent skills, IDE extensions, plus credential leakage in shell history and session JSONL/SQLite. Outputs a security score (0–100) and five reports — Markdown, JSON, classified secrets inventory with redacted fingerprints, prioritised action plan, and a cyberpunk-themed HTML report that auto-opens in your browser. No network, no auto-remediation, no raw secret values written anywhere.
+Read-only scan of `$HOME` for everything an AI coding agent can reach: SSH keys, cloud creds, npm/pip tokens, MCP server configs, AI hooks, repo-level `.claude/.cursor/` configs, agent skills, IDE extensions, plus credential leakage in shell history and session JSONL/SQLite. Outputs a security score (0–100) and five reports — Markdown, JSON, classified secrets inventory with redacted fingerprints, prioritised action plan, and a cyberpunk-themed HTML report that auto-opens in your browser. No telemetry, no auto-remediation, no raw secret values written anywhere; the only network calls are your own logged-in `gh` and `npm` asking GitHub and npm about your account.
 
 ## Quick start
 
@@ -92,7 +94,7 @@ The same scripts run on both platforms. Module checks adapt automatically: `sock
 - **Five reports per run.** `audit-report.md` is human-readable and grouped by severity, with full remediation per finding. `audit-report.json` contains every finding for scripting and diffing across runs, plus a security score, grade letter, and per-service secrets summary. `audit-report.html` is a self-contained cyberpunk-themed HTML view that auto-opens in the browser at the end of the run — score gauge, severity strip, secrets table, collapsible findings, a ☠ status badge below 30. `secrets-inventory.md` lists every detected credential pattern, classified by service, with a redacted fingerprint and a direct pointer to the right rotation panel. `action-plan.md` is the prioritised checklist — start here. It presents a summary-by-service rotation table plus per-source breakdown, then groups findings into TODAY (critical) / THIS WEEK (high) / THIS MONTH (medium) buckets so you can work top-to-bottom without re-reading the full report.
 
 - **Security score (0-100).** Single-number summary. Score = 100 − 5×CRITICAL − 2.5×HIGH − 0.3×MEDIUM − 0.05×LOW − (distinct secrets ÷ 15, capped at 15) − 10 if compound supply-chain risk (MCP server via unpinned npx + npm or GitHub publish-capable credentials), floored at 0. A key found in several files counts once. Grades from S (≥90, "Hardened") through F (<30, "Pwned-Ready"). Score is displayed in `audit-report.json`, `audit-report.md`, and the HTML report. It is intentionally pessimistic — a developer machine should aim for 70+, hardened ones reach 90+. Anything below 50 is the "rotate everything" zone.
-- **Hard guarantees.** Read-only on the host filesystem outside the output directory (`purge-secrets.sh` is the separate, opt-in exception). No network calls. No secret values are ever written to disk or shown on screen — only paths, types, counts, and `XXXX****YYYY (N chars)` fingerprints sufficient to identify which key it is in your provider UI but insufficient to use.
+- **Hard guarantees.** Read-only on the host filesystem outside the output directory (`purge-secrets.sh` is the separate, opt-in exception). Nothing is sent to the author or any third party; the only network calls are made by your own `gh` and `npm` CLIs when they are logged in. No secret values are ever written to disk or shown on screen — only paths, types, counts, and `XXXX****YYYY (N chars)` fingerprints sufficient to identify which key it is in your provider UI but insufficient to use.
 
 ## Requirements
 
@@ -228,7 +230,7 @@ After a run:
 ## Privacy and safety guarantees
 
 - **Read-only.** The audit never writes outside `~/.ai-agent-audit/` (or `--output`).
-- **No network.** Nothing is sent anywhere. The audit does not perform TruffleHog-style verification calls against vendor APIs to test whether a detected secret is still active. This is by design — the no-network policy is more important than reducing false positives. Treat every detected match as live and rotate accordingly.
+- **No telemetry, minimal network.** Nothing is sent to the author or any third party. The only network calls come from your own CLIs when they are installed and logged in: `gh auth status` and `gh repo list` (token scopes, s1ngularity / Shai-Hulud repository names on your account) and `npm whoami` / `npm token list` (npm token count). `op whoami` (module H) may also reach 1Password. Leave A, C, G and H out of `--modules` to skip all of these. The audit does not perform TruffleHog-style verification calls against vendor APIs to test whether a detected secret is still active. This is by design — not touching vendor APIs with your keys is more important than reducing false positives. Treat every detected match as live and rotate accordingly.
 - **No secret values.** Credential patterns are detected by regex, but findings record only path, type, count, and a redacted fingerprint. The user verifies any flagged credential manually with the suggested `grep` command.
 - **Redaction safety net.** Every finding's title, evidence and remediation passes through the secret-pattern redactor before it is written, so a command line or config value that happens to embed a token is stored as `[REDACTED]`. Text copied from files an attacker could control (repo rules files, hook commands, launch agents) is redacted, stripped of control characters, cut to 80 characters and prefixed with `[untrusted content]`, because AI agents read these reports.
 - **No auto-remediation.** Findings include remediation steps, but every fix is run by the user. Especially for token rotation and file deletion — the audit will not act for you.
@@ -314,7 +316,7 @@ Every behaviour change ships with a test in `tests/test_*.sh` (helpers in `tests
 - Local machine only. The audit does not inspect remote servers or CI runners.
 - Module H is intentionally minimal. Reading browser SQLite cookie stores would expose live session tokens, which would violate the no-secret-values guarantee.
 - Module N's IOC list is a static snapshot. New supply-chain attacks (after April 2026) require adding rows to the `NPM_COMPROMISED`, `PIP_COMPROMISED`, or `EXT_COMPROMISED` arrays.
-- No verification step. Unlike TruffleHog, this audit does not ping vendor APIs to test whether a detected secret is still active — the no-network policy takes priority. Treat every match as live and rotate.
+- No verification step. Unlike TruffleHog, this audit does not ping vendor APIs to test whether a detected secret is still active. Treat every match as live and rotate.
 - Active prompt-injection attacks are not detected. The audit reports post-hoc indicators of compromise — zero-width characters in rules files, suspicious instruction language, persistent session artifacts — not zero-day session tampering.
 
 ## License

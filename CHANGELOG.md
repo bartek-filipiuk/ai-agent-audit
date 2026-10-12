@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-12 — open source release
+
+- **Landing page and fix-it guide** at https://local-security.devince.dev (Polish and English).
+- **The network statement is now accurate.** README, SKILL.md and the usage guide used to say "no network calls". The audit sends nothing to the author or any third party, but your own logged-in `gh`, `npm` and `op` CLIs do talk to GitHub, npm and 1Password about your account (token scopes, repository names, token count, session state). Leave modules A, C, G and H out of `--modules` to skip them.
+- **SECURITY.md** describes how to report a weakness in the tool privately.
+
 ## 2026-10 — hardening round
 
 What changed for someone running the tool. Details per change are in the commit messages and in `docs/improvement-plan-2026-10.md`.
